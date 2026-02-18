@@ -54,10 +54,17 @@ export interface MergeRequestApprovals {
 export interface MergeRequestDetails {
   blocking_discussions_resolved?: boolean;
   unresolved_discussions_count?: number;
+  head_pipeline?: {
+    status?: string;
+  };
+  pipeline?: {
+    status?: string;
+  };
 }
 
 export interface OwnMergeRequestChecks {
   isApproved: boolean;
   hasUnresolvedComments: boolean;
   isCiSuccessful: boolean;
+  isCiFailed: boolean;
 }

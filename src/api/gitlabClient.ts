@@ -149,11 +149,14 @@ export class GitLabClient {
     const hasUnresolvedComments =
       (typeof details?.unresolved_discussions_count === 'number' && details.unresolved_discussions_count > 0) ||
       details?.blocking_discussions_resolved === false;
+    const ciStatus = details?.head_pipeline?.status ?? details?.pipeline?.status ?? mergeRequest.pipeline?.status;
+    const normalizedCiStatus = typeof ciStatus === 'string' ? ciStatus.toLowerCase() : '';
 
     return {
       isApproved,
       hasUnresolvedComments,
-      isCiSuccessful: mergeRequest.pipeline?.status === 'success'
+      isCiSuccessful: normalizedCiStatus === 'success',
+      isCiFailed: normalizedCiStatus === 'failed'
     };
   }
 
@@ -163,14 +166,15 @@ export class GitLabClient {
         const approvalsRequired = mergeRequest.approvals_required ?? 0;
         const approvedCount = mergeRequest.approved_by?.length ?? 0;
         const isCreatedByMe = mergeRequest.author?.id === currentUserId;
+        const ownMrChecks = isCreatedByMe ? await this.buildOwnMergeRequestChecks(mergeRequest) : undefined;
 
         return {
           mergeRequest,
-          hasFailedCi: mergeRequest.pipeline?.status === 'failed',
+          hasFailedCi: ownMrChecks ? ownMrChecks.isCiFailed : mergeRequest.pipeline?.status === 'failed',
           hasConflicts: mergeRequest.has_conflicts || mergeRequest.merge_status === 'cannot_be_merged',
           hasPendingApprovals: approvalsRequired > approvedCount,
           isCreatedByMe,
-          ownMrChecks: isCreatedByMe ? await this.buildOwnMergeRequestChecks(mergeRequest) : undefined
+          ownMrChecks
         };
       })
     );

@@ -151,7 +151,8 @@ describe('GitLabClient', () => {
         ok: true,
         json: async () => ({
           blocking_discussions_resolved: false,
-          unresolved_discussions_count: 2
+          unresolved_discussions_count: 2,
+          head_pipeline: { status: 'success' }
         })
       } as Response);
 
@@ -167,7 +168,7 @@ describe('GitLabClient', () => {
         author: { id: 99, username: 'me', name: 'Me' },
         has_conflicts: false,
         merge_status: 'can_be_merged',
-        pipeline: { status: 'success' },
+        pipeline: { status: 'failed' },
         approvals_required: 2,
         approved_by: [{ user: { id: 7, name: 'Reviewer' } }]
       },
@@ -194,7 +195,8 @@ describe('GitLabClient', () => {
       ownMrChecks: {
         isApproved: true,
         hasUnresolvedComments: true,
-        isCiSuccessful: true
+        isCiSuccessful: true,
+        isCiFailed: false
       }
     });
     expect(signals[1]).toMatchObject({
