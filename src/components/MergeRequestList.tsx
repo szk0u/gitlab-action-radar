@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, FolderGit2, GitPullRequest } from 'lucide-react';
 import { MergeRequest, MergeRequestHealth } from '../types/gitlab';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
 interface MergeRequestListProps {
   assignedItems: MergeRequestHealth[];
@@ -9,6 +11,8 @@ interface MergeRequestListProps {
   loading?: boolean;
   error?: string;
 }
+
+type TabKey = 'assigned' | 'review';
 
 function getProjectLabel(mergeRequest: MergeRequest): string {
   const ref = mergeRequest.references?.full;
@@ -34,6 +38,32 @@ function getProjectLabel(mergeRequest: MergeRequest): string {
   }
 
   return `Project #${mergeRequest.project_id}`;
+}
+
+function renderOwnMergeRequestChecks(item: MergeRequestHealth) {
+  if (!item.isCreatedByMe || !item.ownMrChecks) {
+    return null;
+  }
+
+  const { isApproved, hasUnresolvedComments, isCiSuccessful } = item.ownMrChecks;
+
+  return (
+    <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
+      <Badge variant="outline">My MR</Badge>
+      <Badge className={isApproved ? 'border-transparent bg-emerald-100 text-emerald-700' : ''} variant={isApproved ? undefined : 'warning'}>
+        {isApproved ? 'Approved' : 'Not approved'}
+      </Badge>
+      <Badge
+        className={hasUnresolvedComments ? '' : 'border-transparent bg-emerald-100 text-emerald-700'}
+        variant={hasUnresolvedComments ? 'destructive' : undefined}
+      >
+        {hasUnresolvedComments ? 'Unresolved comments' : 'Comments resolved'}
+      </Badge>
+      <Badge className={isCiSuccessful ? 'border-transparent bg-emerald-100 text-emerald-700' : ''} variant={isCiSuccessful ? undefined : 'secondary'}>
+        {isCiSuccessful ? 'CI success' : 'CI not success'}
+      </Badge>
+    </div>
+  );
 }
 
 function renderMergeRequestItem(item: MergeRequestHealth) {
@@ -69,31 +99,37 @@ function renderMergeRequestItem(item: MergeRequestHealth) {
             {hasPendingApprovals && <Badge variant="secondary">Pending approvals</Badge>}
             {!isAtRisk && <Badge variant="outline">Healthy</Badge>}
           </div>
+          {renderOwnMergeRequestChecks(item)}
         </CardContent>
       </Card>
     </li>
   );
 }
 
-function renderSection(title: string, items: MergeRequestHealth[], emptyMessage: string) {
-  return (
-    <section className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-700">{title}</h2>
-        <Badge variant="outline">{items.length}</Badge>
-      </div>
-      {items.length === 0 ? (
-        <Card>
-          <CardContent className="pt-5 text-sm text-slate-600">{emptyMessage}</CardContent>
-        </Card>
-      ) : (
-        <ul className="m-0 flex list-none flex-col gap-3 p-0">{items.map(renderMergeRequestItem)}</ul>
-      )}
-    </section>
-  );
+function renderList(items: MergeRequestHealth[], emptyMessage: string) {
+  if (items.length === 0) {
+    return (
+      <Card>
+        <CardContent className="pt-5 text-sm text-slate-600">{emptyMessage}</CardContent>
+      </Card>
+    );
+  }
+
+  return <ul className="m-0 flex list-none flex-col gap-3 p-0">{items.map(renderMergeRequestItem)}</ul>;
 }
 
 export function MergeRequestList({ assignedItems, reviewRequestedItems, loading, error }: MergeRequestListProps) {
+  const [activeTab, setActiveTab] = useState<TabKey>('assigned');
+
+  useEffect(() => {
+    if (assignedItems.length === 0 && reviewRequestedItems.length > 0) {
+      setActiveTab('review');
+    }
+    if (reviewRequestedItems.length === 0 && assignedItems.length > 0) {
+      setActiveTab('assigned');
+    }
+  }, [assignedItems.length, reviewRequestedItems.length]);
+
   if (loading) {
     return (
       <Card>
@@ -125,9 +161,13 @@ export function MergeRequestList({ assignedItems, reviewRequestedItems, loading,
   }
 
   return (
-    <div className="space-y-5">
-      {renderSection('Assigned to me', assignedItems, 'No assigned merge requests.')}
-      {renderSection('Review requested', reviewRequestedItems, 'No review-requested merge requests.')}
-    </div>
+    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabKey)}>
+      <TabsList className="grid w-full grid-cols-2 sm:w-[320px]">
+        <TabsTrigger value="assigned">Assigned ({assignedItems.length})</TabsTrigger>
+        <TabsTrigger value="review">Review requested ({reviewRequestedItems.length})</TabsTrigger>
+      </TabsList>
+      <TabsContent value="assigned">{renderList(assignedItems, 'No assigned merge requests.')}</TabsContent>
+      <TabsContent value="review">{renderList(reviewRequestedItems, 'No review-requested merge requests.')}</TabsContent>
+    </Tabs>
   );
 }

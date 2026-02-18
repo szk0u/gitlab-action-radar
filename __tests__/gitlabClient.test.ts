@@ -80,13 +80,17 @@ describe('GitLabClient', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          approved_by: [{ user: { id: 99, name: 'Me' } }]
+          approved_by: [{ user: { id: 99, name: 'Me' } }],
+          approved: true,
+          approvals_left: 0
         })
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          approved_by: []
+          approved_by: [],
+          approved: false,
+          approvals_left: 1
         })
       } as Response);
 
@@ -115,6 +119,7 @@ describe('GitLabClient', () => {
       expect.any(Object)
     );
 
+    expect(result.currentUserId).toBe(99);
     expect(result.assigned.map((mr) => mr.id)).toEqual([1]);
     expect(result.reviewRequested.map((mr) => mr.id)).toEqual([4]);
   });
@@ -131,37 +136,82 @@ describe('GitLabClient', () => {
     await expect(client.getCurrentUser()).rejects.toThrow('GitLab API error: 401 Unauthorized');
   });
 
-  it('buildHealthSignals should derive CI/conflict/approval signals', () => {
+  it('buildHealthSignals should derive CI/conflict/approval signals and own-MR checks', async () => {
+    const mockFetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          approved_by: [{ user: { id: 7, name: 'Reviewer' } }],
+          approved: true,
+          approvals_left: 0
+        })
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          blocking_discussions_resolved: false,
+          unresolved_discussions_count: 2
+        })
+      } as Response);
+
     const client = new GitLabClient({ baseUrl: 'https://gitlab.com', token: 'token' });
     const data: MergeRequest[] = [
       {
         id: 1,
         iid: 1,
         project_id: 100,
-        title: 'MR 1',
-        web_url: '',
+        title: 'My MR',
+        web_url: 'https://gitlab.com/group/project/-/merge_requests/1',
         state: 'opened',
+        author: { id: 99, username: 'me', name: 'Me' },
         has_conflicts: false,
         merge_status: 'can_be_merged',
-        pipeline: { status: 'failed' },
+        pipeline: { status: 'success' },
         approvals_required: 2,
-        approved_by: [{ user: { id: 1, name: 'A' } }]
+        approved_by: [{ user: { id: 7, name: 'Reviewer' } }]
       },
       {
         id: 2,
         iid: 2,
         project_id: 200,
-        title: 'MR 2',
-        web_url: '',
+        title: 'Other MR',
+        web_url: 'https://gitlab.com/group/project/-/merge_requests/2',
         state: 'opened',
+        author: { id: 123, username: 'other', name: 'Other' },
         has_conflicts: true,
         merge_status: 'cannot_be_merged'
       }
     ];
 
-    const signals = client.buildHealthSignals(data);
+    const signals = await client.buildHealthSignals(data, 99);
 
-    expect(signals[0]).toMatchObject({ hasFailedCi: true, hasConflicts: false, hasPendingApprovals: true });
-    expect(signals[1]).toMatchObject({ hasFailedCi: false, hasConflicts: true, hasPendingApprovals: false });
+    expect(signals[0]).toMatchObject({
+      hasFailedCi: false,
+      hasConflicts: false,
+      hasPendingApprovals: true,
+      isCreatedByMe: true,
+      ownMrChecks: {
+        isApproved: true,
+        hasUnresolvedComments: true,
+        isCiSuccessful: true
+      }
+    });
+    expect(signals[1]).toMatchObject({
+      hasFailedCi: false,
+      hasConflicts: true,
+      hasPendingApprovals: false,
+      isCreatedByMe: false,
+      ownMrChecks: undefined
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/100/merge_requests/1/approvals',
+      expect.any(Object)
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/100/merge_requests/1',
+      expect.any(Object)
+    );
   });
 });

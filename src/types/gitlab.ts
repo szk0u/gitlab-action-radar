@@ -5,6 +5,11 @@ export interface MergeRequest {
   title: string;
   web_url: string;
   state: string;
+  author?: {
+    id: number;
+    username: string;
+    name: string;
+  };
   draft?: boolean;
   work_in_progress?: boolean;
   has_conflicts: boolean;
@@ -30,13 +35,29 @@ export interface MergeRequestHealth {
   hasFailedCi: boolean;
   hasConflicts: boolean;
   hasPendingApprovals: boolean;
+  isCreatedByMe: boolean;
+  ownMrChecks?: OwnMergeRequestChecks;
 }
 
 export interface MyRelevantMergeRequests {
+  currentUserId: number;
   assigned: MergeRequest[];
   reviewRequested: MergeRequest[];
 }
 
 export interface MergeRequestApprovals {
   approved_by: Array<{ user: { id: number; name: string } }>;
+  approved?: boolean;
+  approvals_left?: number;
+}
+
+export interface MergeRequestDetails {
+  blocking_discussions_resolved?: boolean;
+  unresolved_discussions_count?: number;
+}
+
+export interface OwnMergeRequestChecks {
+  isApproved: boolean;
+  hasUnresolvedComments: boolean;
+  isCiSuccessful: boolean;
 }

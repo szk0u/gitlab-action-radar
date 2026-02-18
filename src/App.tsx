@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
-import { useEffect, useMemo, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GitLabClient } from './api/gitlabClient';
 import { MergeRequestList } from './components/MergeRequestList';
 import { Button } from './components/ui/button';
@@ -138,11 +139,7 @@ export function App() {
     }
   };
 
-  useEffect(() => {
-    if (authLoading) {
-      return;
-    }
-
+  const loadMergeRequests = useCallback(async () => {
     if (!client) {
       setAssignedItems([]);
       setReviewRequestedItems([]);
@@ -151,22 +148,29 @@ export function App() {
       return;
     }
 
-    const load = async () => {
-      setLoading(true);
-      setError(undefined);
-      try {
-        const mergeRequests = await client.listMyRelevantMergeRequests();
-        setAssignedItems(client.buildHealthSignals(mergeRequests.assigned));
-        setReviewRequestedItems(client.buildHealthSignals(mergeRequests.reviewRequested));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
-      } finally {
-        setLoading(false);
-      }
-    };
+    setLoading(true);
+    setError(undefined);
+    try {
+      const mergeRequests = await client.listMyRelevantMergeRequests();
+      const [assignedSignals, reviewRequestedSignals] = await Promise.all([
+        client.buildHealthSignals(mergeRequests.assigned, mergeRequests.currentUserId),
+        client.buildHealthSignals(mergeRequests.reviewRequested, mergeRequests.currentUserId)
+      ]);
+      setAssignedItems(assignedSignals);
+      setReviewRequestedItems(reviewRequestedSignals);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
+  }, [client]);
 
-    void load();
-  }, [authLoading, client]);
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+    void loadMergeRequests();
+  }, [authLoading, loadMergeRequests]);
 
   return (
     <main className="min-h-screen bg-radial-[at_50%_0%] from-slate-200 to-slate-100 px-4 py-6 text-slate-900">
@@ -178,9 +182,15 @@ export function App() {
                 <CardTitle className="text-2xl">GitLab Action Radar</CardTitle>
                 <CardDescription className="mt-1">Assigned to me / Review requested MRs</CardDescription>
               </div>
-              <Button type="button" variant="outline" onClick={openPatIssuePage}>
-                Open PAT page
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" onClick={() => void loadMergeRequests()} disabled={loading || !client}>
+                  <RefreshCw className={loading ? 'animate-spin' : ''} />
+                  Reload
+                </Button>
+                <Button type="button" variant="outline" onClick={openPatIssuePage}>
+                  Open PAT page
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
