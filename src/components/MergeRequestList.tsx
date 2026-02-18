@@ -10,6 +10,7 @@ interface MergeRequestListProps {
   reviewRequestedItems: MergeRequestHealth[];
   loading?: boolean;
   error?: string;
+  onOpenMergeRequest?: (url: string) => void | Promise<void>;
 }
 
 type TabKey = 'assigned' | 'review';
@@ -117,7 +118,11 @@ function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
   );
 }
 
-function renderMergeRequestItem(item: MergeRequestHealth, tabKey: TabKey) {
+function renderMergeRequestItem(
+  item: MergeRequestHealth,
+  tabKey: TabKey,
+  onOpenMergeRequest?: (url: string) => void | Promise<void>
+) {
   const { mergeRequest, hasFailedCi, hasConflicts, hasPendingApprovals } = item;
   const isAtRisk = hasFailedCi || hasConflicts || hasPendingApprovals;
 
@@ -135,6 +140,13 @@ function renderMergeRequestItem(item: MergeRequestHealth, tabKey: TabKey) {
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-start gap-2 text-slate-900 underline-offset-4 hover:underline"
+              onClick={(event) => {
+                if (!onOpenMergeRequest) {
+                  return;
+                }
+                event.preventDefault();
+                void onOpenMergeRequest(mergeRequest.web_url);
+              }}
             >
               <GitPullRequest className="mt-0.5 size-4 shrink-0 text-slate-500" />
               <span>
@@ -158,7 +170,12 @@ function renderMergeRequestItem(item: MergeRequestHealth, tabKey: TabKey) {
   );
 }
 
-function renderList(items: MergeRequestHealth[], emptyMessage: string, tabKey: TabKey) {
+function renderList(
+  items: MergeRequestHealth[],
+  emptyMessage: string,
+  tabKey: TabKey,
+  onOpenMergeRequest?: (url: string) => void | Promise<void>
+) {
   if (items.length === 0) {
     return (
       <Card>
@@ -167,10 +184,20 @@ function renderList(items: MergeRequestHealth[], emptyMessage: string, tabKey: T
     );
   }
 
-  return <ul className="m-0 flex list-none flex-col gap-3 p-0">{items.map((item) => renderMergeRequestItem(item, tabKey))}</ul>;
+  return (
+    <ul className="m-0 flex list-none flex-col gap-3 p-0">
+      {items.map((item) => renderMergeRequestItem(item, tabKey, onOpenMergeRequest))}
+    </ul>
+  );
 }
 
-export function MergeRequestList({ assignedItems, reviewRequestedItems, loading, error }: MergeRequestListProps) {
+export function MergeRequestList({
+  assignedItems,
+  reviewRequestedItems,
+  loading,
+  error,
+  onOpenMergeRequest
+}: MergeRequestListProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('assigned');
 
   useEffect(() => {
@@ -218,8 +245,12 @@ export function MergeRequestList({ assignedItems, reviewRequestedItems, loading,
         <TabsTrigger value="assigned">Assigned ({assignedItems.length})</TabsTrigger>
         <TabsTrigger value="review">Review requested ({reviewRequestedItems.length})</TabsTrigger>
       </TabsList>
-      <TabsContent value="assigned">{renderList(assignedItems, 'No assigned merge requests.', 'assigned')}</TabsContent>
-      <TabsContent value="review">{renderList(reviewRequestedItems, 'No review-requested merge requests.', 'review')}</TabsContent>
+      <TabsContent value="assigned">
+        {renderList(assignedItems, 'No assigned merge requests.', 'assigned', onOpenMergeRequest)}
+      </TabsContent>
+      <TabsContent value="review">
+        {renderList(reviewRequestedItems, 'No review-requested merge requests.', 'review', onOpenMergeRequest)}
+      </TabsContent>
     </Tabs>
   );
 }

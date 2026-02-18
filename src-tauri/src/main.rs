@@ -72,9 +72,23 @@ fn clear_pat() -> Result<(), String> {
     }
 }
 
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err("only http/https URLs are supported".to_string());
+    }
+
+    open::that_detached(url).map_err(|err| format!("failed to open URL: {err}"))
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![save_pat, load_pat, clear_pat])
+        .invoke_handler(tauri::generate_handler![
+            save_pat,
+            load_pat,
+            clear_pat,
+            open_external_url
+        ])
         .setup(|app| {
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&quit_item])?;

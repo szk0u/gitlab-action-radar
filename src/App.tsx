@@ -88,11 +88,24 @@ export function App() {
     };
   }, []);
 
-  const openPatIssuePage = () => {
-    const openedWindow = window.open(gitlabPatIssueUrl, '_blank', 'noopener,noreferrer');
-    if (!openedWindow) {
-      window.location.assign(gitlabPatIssueUrl);
+  const openExternalUrl = useCallback(async (url: string) => {
+    if (isTauriRuntime()) {
+      try {
+        await invoke('open_external_url', { url });
+        return;
+      } catch {
+        // Fall back to browser APIs below.
+      }
     }
+
+    const openedWindow = window.open(url, '_blank', 'noopener,noreferrer');
+    if (!openedWindow) {
+      window.location.assign(url);
+    }
+  }, []);
+
+  const openPatIssuePage = () => {
+    void openExternalUrl(gitlabPatIssueUrl);
   };
 
   const savePatToken = async () => {
@@ -230,6 +243,7 @@ export function App() {
           reviewRequestedItems={reviewRequestedItems}
           loading={loading}
           error={error}
+          onOpenMergeRequest={openExternalUrl}
         />
       </div>
     </main>
