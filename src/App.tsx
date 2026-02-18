@@ -6,6 +6,7 @@ import { MergeRequestList } from './components/MergeRequestList';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 import { Input } from './components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { MergeRequestHealth } from './types/gitlab';
 
 const gitlabBaseUrl = import.meta.env.VITE_GITLAB_BASE_URL ?? 'https://gitlab.com';
@@ -478,97 +479,116 @@ export function App() {
                   <RefreshCw className={loading ? 'animate-spin' : ''} />
                   Reload
                 </Button>
-                <Button type="button" variant="outline" onClick={openPatIssuePage}>
-                  Open PAT page
-                </Button>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                type="password"
-                value={patInput}
-                onChange={(event) => setPatInput(event.target.value)}
-                placeholder="glpat-..."
-                aria-label="GitLab PAT"
-                className="sm:flex-1"
-              />
-              <Button type="button" onClick={() => void savePatToken()} disabled={authLoading}>
-                Save PAT
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => void clearSavedPatToken()}
-                disabled={authLoading || !hasSavedPatToken}
-              >
-                Clear saved PAT
-              </Button>
-            </div>
-            {authMessage && <p className="text-sm text-slate-600">{authMessage}</p>}
-            {hasSavedPatToken && <p className="text-sm text-slate-600">現在は安全ストアのPATを使用しています。</p>}
-            {!hasSavedPatToken && gitlabTokenFromEnv && (
-              <p className="text-sm text-slate-600">現在は環境変数のPATを使用しています。</p>
-            )}
+          <CardContent>
+            <Tabs defaultValue="radar">
+              <TabsList className="grid w-full max-w-xs grid-cols-2">
+                <TabsTrigger value="radar">Radar</TabsTrigger>
+                <TabsTrigger value="settings">Settings</TabsTrigger>
+              </TabsList>
 
-            <div className="space-y-2 border-t border-slate-200 pt-3">
-              <p className="text-sm font-medium text-slate-700">Review reminder</p>
-              <div className="flex flex-col gap-2">
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={reviewReminderEnabled}
-                    onChange={(event) => setReviewReminderEnabled(event.target.checked)}
-                    className="size-4"
-                  />
-                  Enable reminder
-                </label>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <Input
-                    type="time"
-                    value={reviewReminderTimeInput}
-                    onChange={(event) => setReviewReminderTimeInput(event.target.value)}
-                    step={60}
-                    disabled={!reviewReminderEnabled}
-                    className="sm:w-[160px]"
-                    aria-label="Review reminder time"
-                  />
-                  <Button type="button" variant="outline" onClick={addReviewReminderTime} disabled={!reviewReminderEnabled}>
-                    Add time
-                  </Button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {reviewReminderTimes.length > 0 ? (
-                    reviewReminderTimes.map((time) => (
-                      <Button
-                        key={time}
-                        type="button"
-                        variant="secondary"
-                        onClick={() => removeReviewReminderTime(time)}
-                        disabled={!reviewReminderEnabled}
-                      >
-                        {time} Remove
-                      </Button>
-                    ))
-                  ) : (
-                    <p className="text-xs text-slate-500">通知時刻が未設定です。</p>
+              <TabsContent value="radar">
+                <MergeRequestList
+                  assignedItems={assignedItems}
+                  reviewRequestedItems={reviewRequestedItems}
+                  loading={loading}
+                  error={error}
+                  onOpenMergeRequest={openExternalUrl}
+                />
+              </TabsContent>
+
+              <TabsContent value="settings" className="space-y-3">
+                <section className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+                    <div>
+                      <p className="text-sm font-medium text-slate-700">GitLab PAT</p>
+                      <p className="text-xs text-slate-600">PATを安全ストアに保存して利用します。</p>
+                    </div>
+                    <Button type="button" variant="outline" onClick={openPatIssuePage}>
+                      Open PAT page
+                    </Button>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      type="password"
+                      value={patInput}
+                      onChange={(event) => setPatInput(event.target.value)}
+                      placeholder="glpat-..."
+                      aria-label="GitLab PAT"
+                      className="sm:flex-1"
+                    />
+                    <Button type="button" onClick={() => void savePatToken()} disabled={authLoading}>
+                      Save PAT
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => void clearSavedPatToken()}
+                      disabled={authLoading || !hasSavedPatToken}
+                    >
+                      Clear saved PAT
+                    </Button>
+                  </div>
+                  {authMessage && <p className="text-sm text-slate-600">{authMessage}</p>}
+                  {hasSavedPatToken && <p className="text-sm text-slate-600">現在は安全ストアのPATを使用しています。</p>}
+                  {!hasSavedPatToken && gitlabTokenFromEnv && (
+                    <p className="text-sm text-slate-600">現在は環境変数のPATを使用しています。</p>
                   )}
-                </div>
-              </div>
-              <p className="text-xs text-slate-600">設定した各時刻に review requested MR があればOS通知します。</p>
-              {reviewReminderMessage && <p className="text-xs text-slate-600">{reviewReminderMessage}</p>}
-            </div>
+                </section>
+
+                <section className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                  <p className="text-sm font-medium text-slate-700">Review reminder</p>
+                  <div className="flex flex-col gap-2">
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={reviewReminderEnabled}
+                        onChange={(event) => setReviewReminderEnabled(event.target.checked)}
+                        className="size-4"
+                      />
+                      Enable reminder
+                    </label>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <Input
+                        type="time"
+                        value={reviewReminderTimeInput}
+                        onChange={(event) => setReviewReminderTimeInput(event.target.value)}
+                        step={60}
+                        disabled={!reviewReminderEnabled}
+                        className="sm:w-[160px]"
+                        aria-label="Review reminder time"
+                      />
+                      <Button type="button" variant="outline" onClick={addReviewReminderTime} disabled={!reviewReminderEnabled}>
+                        Add time
+                      </Button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {reviewReminderTimes.length > 0 ? (
+                        reviewReminderTimes.map((time) => (
+                          <Button
+                            key={time}
+                            type="button"
+                            variant="secondary"
+                            onClick={() => removeReviewReminderTime(time)}
+                            disabled={!reviewReminderEnabled}
+                          >
+                            {time} Remove
+                          </Button>
+                        ))
+                      ) : (
+                        <p className="text-xs text-slate-500">通知時刻が未設定です。</p>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-600">設定した各時刻に review requested MR があればOS通知します。</p>
+                  {reviewReminderMessage && <p className="text-xs text-slate-600">{reviewReminderMessage}</p>}
+                </section>
+              </TabsContent>
+            </Tabs>
           </CardContent>
         </Card>
-
-        <MergeRequestList
-          assignedItems={assignedItems}
-          reviewRequestedItems={reviewRequestedItems}
-          loading={loading}
-          error={error}
-          onOpenMergeRequest={openExternalUrl}
-        />
       </div>
     </main>
   );
