@@ -84,8 +84,16 @@ export interface MergeRequestNote {
   };
 }
 
+export interface MergeRequestCommit {
+  id: string;
+  created_at?: string;
+}
+
+export type ReviewerReviewStatus = 'needs_review' | 'waiting_for_author' | 'new';
+
 export interface ReviewerMergeRequestChecks {
-  hasMyComment: boolean;
-  myLastCommentedAt?: string;
-  latestActivity: 'mr_update' | 'my_comment' | 'same_time' | 'unknown';
+  reviewStatus: ReviewerReviewStatus;
+  reviewerLastCommentedAt?: string;
+  latestCommitAt?: string;
+  authorLastCommentedAt?: string;
 }

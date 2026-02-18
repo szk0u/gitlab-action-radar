@@ -242,7 +242,7 @@ describe('GitLabClient', () => {
     );
   });
 
-  it('buildHealthSignals should include reviewer comment activity details', async () => {
+  it('buildHealthSignals should include reviewer review status details', async () => {
     const mockFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
 
@@ -263,16 +263,31 @@ describe('GitLabClient', () => {
           json: async () => [
             {
               id: 11,
+              created_at: '2026-02-18T10:00:00Z',
+              system: false,
+              author: { id: 123, username: 'author', name: 'Author' }
+            },
+            {
+              id: 10,
               created_at: '2026-02-18T09:00:00Z',
               system: false,
               author: { id: 99, username: 'me', name: 'Me' }
             },
             {
-              id: 10,
               created_at: '2026-02-18T08:00:00Z',
               system: false,
               author: { id: 7, username: 'someone', name: 'Someone' }
             }
+          ]
+        } as Response;
+      }
+
+      if (url === 'https://gitlab.com/api/v4/projects/500/merge_requests/50/commits?per_page=100') {
+        return {
+          ok: true,
+          json: async () => [
+            { id: 'b', created_at: '2026-02-18T08:30:00Z' },
+            { id: 'a', created_at: '2026-02-18T08:00:00Z' }
           ]
         } as Response;
       }
@@ -299,9 +314,10 @@ describe('GitLabClient', () => {
     const signals = await client.buildHealthSignals(data, 99, { includeReviewerChecks: true });
 
     expect(signals[0].reviewerChecks).toMatchObject({
-      hasMyComment: true,
-      myLastCommentedAt: '2026-02-18T09:00:00Z',
-      latestActivity: 'mr_update'
+      reviewStatus: 'needs_review',
+      reviewerLastCommentedAt: '2026-02-18T09:00:00Z',
+      latestCommitAt: '2026-02-18T08:30:00Z',
+      authorLastCommentedAt: '2026-02-18T10:00:00Z'
     });
     expect(signals[0]).toMatchObject({
       hasFailedCi: false,
@@ -315,5 +331,116 @@ describe('GitLabClient', () => {
       'https://gitlab.com/api/v4/projects/500/merge_requests/50',
       expect.any(Object)
     );
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/500/merge_requests/50/commits?per_page=100',
+      expect.any(Object)
+    );
+  });
+
+  it('buildHealthSignals should classify reviewer statuses for waiting/new flows', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url === 'https://gitlab.com/api/v4/projects/600/merge_requests/60') {
+        return {
+          ok: true,
+          json: async () => ({
+            has_conflicts: false,
+            merge_status: 'can_be_merged'
+          })
+        } as Response;
+      }
+
+      if (url === 'https://gitlab.com/api/v4/projects/600/merge_requests/60/notes?per_page=100&order_by=created_at&sort=desc') {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: 20,
+              created_at: '2026-02-18T09:00:00Z',
+              system: false,
+              author: { id: 99, username: 'me', name: 'Me' }
+            },
+            {
+              id: 19,
+              created_at: '2026-02-18T08:30:00Z',
+              system: false,
+              author: { id: 777, username: 'author1', name: 'Author1' }
+            }
+          ]
+        } as Response;
+      }
+
+      if (url === 'https://gitlab.com/api/v4/projects/600/merge_requests/60/commits?per_page=100') {
+        return {
+          ok: true,
+          json: async () => [{ id: 'c1', created_at: '2026-02-18T08:00:00Z' }]
+        } as Response;
+      }
+
+      if (url === 'https://gitlab.com/api/v4/projects/610/merge_requests/61') {
+        return {
+          ok: true,
+          json: async () => ({
+            has_conflicts: false,
+            merge_status: 'can_be_merged'
+          })
+        } as Response;
+      }
+
+      if (url === 'https://gitlab.com/api/v4/projects/610/merge_requests/61/notes?per_page=100&order_by=created_at&sort=desc') {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: 30,
+              created_at: '2026-02-18T11:00:00Z',
+              system: false,
+              author: { id: 888, username: 'author2', name: 'Author2' }
+            }
+          ]
+        } as Response;
+      }
+
+      if (url === 'https://gitlab.com/api/v4/projects/610/merge_requests/61/commits?per_page=100') {
+        return {
+          ok: true,
+          json: async () => [{ id: 'c2', created_at: '2026-02-18T10:00:00Z' }]
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+
+    const client = new GitLabClient({ baseUrl: 'https://gitlab.com', token: 'token' });
+    const data: MergeRequest[] = [
+      {
+        id: 6,
+        iid: 60,
+        project_id: 600,
+        title: 'Waiting MR',
+        web_url: 'https://gitlab.com/group/project/-/merge_requests/60',
+        state: 'opened',
+        author: { id: 777, username: 'author1', name: 'Author1' },
+        has_conflicts: false,
+        merge_status: 'can_be_merged'
+      },
+      {
+        id: 7,
+        iid: 61,
+        project_id: 610,
+        title: 'New MR',
+        web_url: 'https://gitlab.com/group/project/-/merge_requests/61',
+        state: 'opened',
+        author: { id: 888, username: 'author2', name: 'Author2' },
+        has_conflicts: false,
+        merge_status: 'can_be_merged'
+      }
+    ];
+
+    const signals = await client.buildHealthSignals(data, 99, { includeReviewerChecks: true });
+
+    expect(signals[0].reviewerChecks?.reviewStatus).toBe('waiting_for_author');
+    expect(signals[1].reviewerChecks?.reviewStatus).toBe('new');
   });
 });

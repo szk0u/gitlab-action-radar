@@ -1,5 +1,6 @@
 import {
   GitLabUser,
+  MergeRequestCommit,
   MergeRequest,
   MergeRequestApprovals,
   MergeRequestDetails,
@@ -7,7 +8,8 @@ import {
   MergeRequestNote,
   MyRelevantMergeRequests,
   OwnMergeRequestChecks,
-  ReviewerMergeRequestChecks
+  ReviewerMergeRequestChecks,
+  ReviewerReviewStatus
 } from '../types/gitlab';
 
 export interface GitLabClientConfig {
@@ -25,6 +27,7 @@ export class GitLabClient {
   private readonly approvalsCache = new Map<string, Promise<MergeRequestApprovals | undefined>>();
   private readonly detailsCache = new Map<string, Promise<MergeRequestDetails | undefined>>();
   private readonly notesCache = new Map<string, Promise<MergeRequestNote[] | undefined>>();
+  private readonly commitsCache = new Map<string, Promise<MergeRequestCommit[] | undefined>>();
 
   constructor(config: GitLabClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
@@ -118,6 +121,23 @@ export class GitLabClient {
     return promise;
   }
 
+  private getMergeRequestCommits(mergeRequest: MergeRequest): Promise<MergeRequestCommit[] | undefined> {
+    const key = this.getMergeRequestKey(mergeRequest);
+    const cached = this.commitsCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    const promise = this.request<MergeRequestCommit[]>(
+      `/api/v4/projects/${encodeURIComponent(String(mergeRequest.project_id))}/merge_requests/${encodeURIComponent(
+        String(mergeRequest.iid)
+      )}/commits?per_page=100`
+    ).catch(() => undefined);
+
+    this.commitsCache.set(key, promise);
+    return promise;
+  }
+
   private async isReviewedByUser(mergeRequest: MergeRequest, userId: number): Promise<boolean> {
     if ((mergeRequest.approved_by ?? []).some((approval) => approval.user.id === userId)) {
       return true;
@@ -197,26 +217,62 @@ export class GitLabClient {
     );
   }
 
-  private resolveLatestActivity(
-    mergeRequestUpdatedAt: string | undefined,
-    myLastCommentedAt: string | undefined
-  ): ReviewerMergeRequestChecks['latestActivity'] {
-    if (!myLastCommentedAt || !mergeRequestUpdatedAt) {
-      return 'unknown';
+  private isLaterThan(left: string | undefined, right: string | undefined): boolean {
+    if (!left || !right) {
+      return false;
     }
 
-    const mergeRequestUpdatedAtMs = Date.parse(mergeRequestUpdatedAt);
-    const myLastCommentedAtMs = Date.parse(myLastCommentedAt);
-    if (Number.isNaN(mergeRequestUpdatedAtMs) || Number.isNaN(myLastCommentedAtMs)) {
-      return 'unknown';
+    const leftMs = Date.parse(left);
+    const rightMs = Date.parse(right);
+    if (Number.isNaN(leftMs) || Number.isNaN(rightMs)) {
+      return false;
     }
-    if (mergeRequestUpdatedAtMs > myLastCommentedAtMs) {
-      return 'mr_update';
+
+    return leftMs > rightMs;
+  }
+
+  private async getLatestCommitAt(mergeRequest: MergeRequest): Promise<string | undefined> {
+    const commits = await this.getMergeRequestCommits(mergeRequest);
+    if (!commits || commits.length === 0) {
+      return undefined;
     }
-    if (mergeRequestUpdatedAtMs < myLastCommentedAtMs) {
-      return 'my_comment';
+
+    let latestCommitAt: string | undefined;
+    let latestCommitAtMs = Number.NEGATIVE_INFINITY;
+
+    for (const commit of commits) {
+      const commitCreatedAt = commit.created_at;
+      if (!commitCreatedAt) {
+        continue;
+      }
+
+      const commitCreatedAtMs = Date.parse(commitCreatedAt);
+      if (Number.isNaN(commitCreatedAtMs)) {
+        continue;
+      }
+
+      if (commitCreatedAtMs > latestCommitAtMs) {
+        latestCommitAtMs = commitCreatedAtMs;
+        latestCommitAt = commitCreatedAt;
+      }
     }
-    return 'same_time';
+
+    return latestCommitAt;
+  }
+
+  private resolveReviewStatus(
+    reviewerLastCommentedAt: string | undefined,
+    latestCommitAt: string | undefined,
+    authorLastCommentedAt: string | undefined
+  ): ReviewerReviewStatus {
+    if (!reviewerLastCommentedAt) {
+      return 'new';
+    }
+
+    const needsReview =
+      this.isLaterThan(latestCommitAt, reviewerLastCommentedAt) ||
+      this.isLaterThan(authorLastCommentedAt, reviewerLastCommentedAt);
+    return needsReview ? 'needs_review' : 'waiting_for_author';
   }
 
   private async buildReviewerMergeRequestChecks(
@@ -224,13 +280,35 @@ export class GitLabClient {
     currentUserId: number
   ): Promise<ReviewerMergeRequestChecks> {
     const notes = await this.getMergeRequestNotes(mergeRequest);
-    const myLastComment = (notes ?? []).find((note) => note.author?.id === currentUserId && !note.system);
-    const myLastCommentedAt = myLastComment?.created_at;
+    const mrAuthorId = mergeRequest.author?.id;
+    let reviewerLastCommentedAt: string | undefined;
+    let authorLastCommentedAt: string | undefined;
+
+    for (const note of notes ?? []) {
+      if (note.system) {
+        continue;
+      }
+
+      const noteAuthorId = note.author?.id;
+      if (noteAuthorId === currentUserId && !reviewerLastCommentedAt) {
+        reviewerLastCommentedAt = note.created_at;
+      } else if (typeof mrAuthorId === 'number' && noteAuthorId === mrAuthorId && !authorLastCommentedAt) {
+        authorLastCommentedAt = note.created_at;
+      }
+
+      if (reviewerLastCommentedAt && authorLastCommentedAt) {
+        break;
+      }
+    }
+
+    const latestCommitAt = await this.getLatestCommitAt(mergeRequest);
+    const reviewStatus = this.resolveReviewStatus(reviewerLastCommentedAt, latestCommitAt, authorLastCommentedAt);
 
     return {
-      hasMyComment: Boolean(myLastCommentedAt),
-      myLastCommentedAt,
-      latestActivity: this.resolveLatestActivity(mergeRequest.updated_at, myLastCommentedAt)
+      reviewStatus,
+      reviewerLastCommentedAt,
+      latestCommitAt,
+      authorLastCommentedAt
     };
   }
 

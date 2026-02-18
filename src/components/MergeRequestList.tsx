@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, FolderGit2, GitPullRequest } from 'lucide-react';
-import { MergeRequest, MergeRequestHealth } from '../types/gitlab';
+import { MergeRequest, MergeRequestHealth, ReviewerReviewStatus } from '../types/gitlab';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
@@ -85,25 +85,90 @@ function formatDateTime(value: string | undefined): string {
   }).format(date);
 }
 
+interface ReviewerStatusCounts {
+  needsReview: number;
+  waitingForAuthor: number;
+  new: number;
+}
+
+function getReviewStatus(item: MergeRequestHealth): ReviewerReviewStatus {
+  return item.reviewerChecks?.reviewStatus ?? 'new';
+}
+
+function getReviewStatusPriority(status: ReviewerReviewStatus): number {
+  if (status === 'needs_review') {
+    return 0;
+  }
+  if (status === 'new') {
+    return 1;
+  }
+  return 2;
+}
+
+function getUpdatedAtMs(value: string | undefined): number {
+  if (!value) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
+function sortReviewRequestedItems(items: MergeRequestHealth[]): MergeRequestHealth[] {
+  return [...items].sort((left, right) => {
+    const leftPriority = getReviewStatusPriority(getReviewStatus(left));
+    const rightPriority = getReviewStatusPriority(getReviewStatus(right));
+    if (leftPriority !== rightPriority) {
+      return leftPriority - rightPriority;
+    }
+
+    return getUpdatedAtMs(right.mergeRequest.updated_at) - getUpdatedAtMs(left.mergeRequest.updated_at);
+  });
+}
+
+function summarizeReviewerStatuses(items: MergeRequestHealth[]): ReviewerStatusCounts {
+  const result: ReviewerStatusCounts = {
+    needsReview: 0,
+    waitingForAuthor: 0,
+    new: 0
+  };
+
+  for (const item of items) {
+    const status = getReviewStatus(item);
+    if (status === 'needs_review') {
+      result.needsReview += 1;
+      continue;
+    }
+    if (status === 'waiting_for_author') {
+      result.waitingForAuthor += 1;
+      continue;
+    }
+    result.new += 1;
+  }
+
+  return result;
+}
+
 function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
   if (tabKey !== 'review' || !item.reviewerChecks) {
     return null;
   }
 
-  const { hasMyComment, myLastCommentedAt, latestActivity } = item.reviewerChecks;
-  const latestActivityLabel =
-    latestActivity === 'mr_update'
-      ? 'MR更新が最新'
-      : latestActivity === 'my_comment'
-        ? '自分のコメントが最新'
-        : latestActivity === 'same_time'
-          ? '同時刻'
-          : '比較不可';
+  const { reviewStatus, reviewerLastCommentedAt, latestCommitAt, authorLastCommentedAt } = item.reviewerChecks;
+  const reviewStatusLabel =
+    reviewStatus === 'needs_review'
+      ? '要レビュー'
+      : reviewStatus === 'waiting_for_author'
+        ? '作者修正待ち'
+        : '未着手';
+  const reviewStatusVariant = reviewStatus === 'needs_review' ? 'destructive' : reviewStatus === 'new' ? 'warning' : 'secondary';
+  const hasMyComment = Boolean(reviewerLastCommentedAt);
 
   return (
     <div className="mt-3 space-y-1.5 border-t border-slate-200 pt-3 text-xs text-slate-600">
       <div className="flex flex-wrap gap-2">
         <Badge variant="outline">Reviewer activity</Badge>
+        <Badge variant={reviewStatusVariant}>{reviewStatusLabel}</Badge>
         <Badge
           className={hasMyComment ? 'border-transparent bg-emerald-100 text-emerald-700' : ''}
           variant={hasMyComment ? undefined : 'warning'}
@@ -111,9 +176,9 @@ function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
           {hasMyComment ? 'Commented' : 'No comment'}
         </Badge>
       </div>
-      <p>MR updated: {formatDateTime(item.mergeRequest.updated_at)}</p>
-      <p>My last comment: {formatDateTime(myLastCommentedAt)}</p>
-      <p>Latest: {latestActivityLabel}</p>
+      <p>My last comment: {formatDateTime(reviewerLastCommentedAt)}</p>
+      <p>Latest commit: {formatDateTime(latestCommitAt)}</p>
+      <p>Author last comment: {formatDateTime(authorLastCommentedAt)}</p>
     </div>
   );
 }
@@ -203,6 +268,14 @@ export function MergeRequestList({
   onOpenMergeRequest
 }: MergeRequestListProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('assigned');
+  const sortedReviewRequestedItems = useMemo(
+    () => sortReviewRequestedItems(reviewRequestedItems),
+    [reviewRequestedItems]
+  );
+  const reviewStatusCounts = useMemo(
+    () => summarizeReviewerStatuses(reviewRequestedItems),
+    [reviewRequestedItems]
+  );
 
   useEffect(() => {
     if (assignedItems.length === 0 && reviewRequestedItems.length > 0) {
@@ -252,8 +325,15 @@ export function MergeRequestList({
       <TabsContent value="assigned">
         {renderList(assignedItems, 'No assigned merge requests.', 'assigned', onOpenMergeRequest)}
       </TabsContent>
-      <TabsContent value="review">
-        {renderList(reviewRequestedItems, 'No review-requested merge requests.', 'review', onOpenMergeRequest)}
+      <TabsContent value="review" className="space-y-3">
+        <Card>
+          <CardContent className="flex flex-wrap gap-2 pt-4 text-xs text-slate-600">
+            <Badge variant="destructive">要レビュー {reviewStatusCounts.needsReview}</Badge>
+            <Badge variant="secondary">作者修正待ち {reviewStatusCounts.waitingForAuthor}</Badge>
+            <Badge variant="warning">未着手 {reviewStatusCounts.new}</Badge>
+          </CardContent>
+        </Card>
+        {renderList(sortedReviewRequestedItems, 'No review-requested merge requests.', 'review', onOpenMergeRequest)}
       </TabsContent>
     </Tabs>
   );

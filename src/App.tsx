@@ -98,6 +98,37 @@ function parseNotifiedSlots(value: string | null): string[] {
   }
 }
 
+interface ReviewStatusCounts {
+  total: number;
+  needsReview: number;
+  waitingForAuthor: number;
+  new: number;
+}
+
+function summarizeReviewStatusCounts(items: MergeRequestHealth[]): ReviewStatusCounts {
+  const result: ReviewStatusCounts = {
+    total: items.length,
+    needsReview: 0,
+    waitingForAuthor: 0,
+    new: 0
+  };
+
+  for (const item of items) {
+    const status = item.reviewerChecks?.reviewStatus ?? 'new';
+    if (status === 'needs_review') {
+      result.needsReview += 1;
+      continue;
+    }
+    if (status === 'waiting_for_author') {
+      result.waitingForAuthor += 1;
+      continue;
+    }
+    result.new += 1;
+  }
+
+  return result;
+}
+
 export function App() {
   const [patToken, setPatToken] = useState<string>(gitlabTokenFromEnv);
   const [patInput, setPatInput] = useState<string>('');
@@ -221,8 +252,8 @@ export function App() {
     setReviewReminderTimes((previous) => previous.filter((item) => item !== time));
   }, []);
 
-  const notifyReviewReminder = useCallback(async (reviewCount: number, scheduledTime: string) => {
-    if (reviewCount <= 0) {
+  const notifyReviewReminder = useCallback(async (counts: ReviewStatusCounts, scheduledTime: string) => {
+    if (counts.total <= 0) {
       return;
     }
 
@@ -243,9 +274,11 @@ export function App() {
       }
 
       new Notification('GitLab Action Radar', {
-        body: `Review requested MR が ${reviewCount} 件あります。`
+        body: `要レビュー ${counts.needsReview}件 / 作者修正待ち ${counts.waitingForAuthor}件 / 未着手 ${counts.new}件`
       });
-      setReviewReminderMessage(`リマインド通知を送信しました (${scheduledTime})`);
+      setReviewReminderMessage(
+        `リマインド通知を送信しました (${scheduledTime}) - 要レビュー ${counts.needsReview}件 / 作者修正待ち ${counts.waitingForAuthor}件 / 未着手 ${counts.new}件`
+      );
     } catch (err) {
       setReviewReminderMessage(`通知送信に失敗しました: ${toMessage(err)}`);
     }
@@ -318,9 +351,10 @@ export function App() {
       setReviewRequestedItems(reviewRequestedSignals);
 
       if (options?.notifyReviewReminder) {
+        const reviewStatusCounts = summarizeReviewStatusCounts(reviewRequestedSignals);
         const reminderTimeLabel = options.reminderTime ?? new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit' }).format(new Date());
-        if (reviewRequestedSignals.length > 0) {
-          await notifyReviewReminder(reviewRequestedSignals.length, reminderTimeLabel);
+        if (reviewStatusCounts.total > 0) {
+          await notifyReviewReminder(reviewStatusCounts, reminderTimeLabel);
         } else {
           setReviewReminderMessage(`${reminderTimeLabel} 時点ではレビュー対象のMRはありませんでした。`);
         }
