@@ -56,6 +56,8 @@ export interface MergeRequestApprovals {
 export interface MergeRequestDetails {
   blocking_discussions_resolved?: boolean;
   unresolved_discussions_count?: number;
+  has_conflicts?: boolean;
+  merge_status?: string;
   head_pipeline?: {
     status?: string;
   };

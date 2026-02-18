@@ -173,8 +173,7 @@ export class GitLabClient {
     const hasUnresolvedComments =
       (typeof details?.unresolved_discussions_count === 'number' && details.unresolved_discussions_count > 0) ||
       details?.blocking_discussions_resolved === false;
-    const ciStatus = details?.head_pipeline?.status ?? details?.pipeline?.status ?? mergeRequest.pipeline?.status;
-    const normalizedCiStatus = typeof ciStatus === 'string' ? ciStatus.toLowerCase() : '';
+    const normalizedCiStatus = this.getNormalizedCiStatus(mergeRequest, details);
 
     return {
       isApproved,
@@ -182,6 +181,20 @@ export class GitLabClient {
       isCiSuccessful: normalizedCiStatus === 'success',
       isCiFailed: normalizedCiStatus === 'failed'
     };
+  }
+
+  private getNormalizedCiStatus(mergeRequest: MergeRequest, details?: MergeRequestDetails): string {
+    const ciStatus = details?.head_pipeline?.status ?? details?.pipeline?.status ?? mergeRequest.pipeline?.status;
+    return typeof ciStatus === 'string' ? ciStatus.toLowerCase() : '';
+  }
+
+  private hasMergeConflict(mergeRequest: MergeRequest, details?: MergeRequestDetails): boolean {
+    return (
+      details?.has_conflicts === true ||
+      details?.merge_status === 'cannot_be_merged' ||
+      mergeRequest.has_conflicts ||
+      mergeRequest.merge_status === 'cannot_be_merged'
+    );
   }
 
   private resolveLatestActivity(
@@ -231,15 +244,25 @@ export class GitLabClient {
         const approvalsRequired = mergeRequest.approvals_required ?? 0;
         const approvedCount = mergeRequest.approved_by?.length ?? 0;
         const isCreatedByMe = mergeRequest.author?.id === currentUserId;
-        const ownMrChecks = isCreatedByMe ? await this.buildOwnMergeRequestChecks(mergeRequest) : undefined;
-        const reviewerChecks = options?.includeReviewerChecks
-          ? await this.buildReviewerMergeRequestChecks(mergeRequest, currentUserId)
-          : undefined;
+        const [details, ownMrChecks, reviewerChecks] = await Promise.all([
+          this.getMergeRequestDetails(mergeRequest),
+          isCreatedByMe ? this.buildOwnMergeRequestChecks(mergeRequest) : Promise.resolve(undefined),
+          options?.includeReviewerChecks
+            ? this.buildReviewerMergeRequestChecks(mergeRequest, currentUserId)
+            : Promise.resolve(undefined)
+        ]);
+        const normalizedCiStatus = ownMrChecks
+          ? ownMrChecks.isCiFailed
+            ? 'failed'
+            : ownMrChecks.isCiSuccessful
+              ? 'success'
+              : this.getNormalizedCiStatus(mergeRequest, details)
+          : this.getNormalizedCiStatus(mergeRequest, details);
 
         return {
           mergeRequest,
-          hasFailedCi: ownMrChecks ? ownMrChecks.isCiFailed : mergeRequest.pipeline?.status === 'failed',
-          hasConflicts: mergeRequest.has_conflicts || mergeRequest.merge_status === 'cannot_be_merged',
+          hasFailedCi: normalizedCiStatus === 'failed',
+          hasConflicts: this.hasMergeConflict(mergeRequest, details),
           hasPendingApprovals: approvalsRequired > approvedCount,
           isCreatedByMe,
           ownMrChecks,

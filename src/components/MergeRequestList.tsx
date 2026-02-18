@@ -157,8 +157,12 @@ function renderMergeRequestItem(
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
-            {hasFailedCi && <Badge variant="destructive">CI failure</Badge>}
-            {hasConflicts && <Badge variant="warning">Conflicts</Badge>}
+            <Badge className={hasFailedCi ? '' : 'border-transparent bg-emerald-100 text-emerald-700'} variant={hasFailedCi ? 'destructive' : undefined}>
+              {hasFailedCi ? 'CI failed' : 'CI not failed'}
+            </Badge>
+            <Badge className={hasConflicts ? '' : 'border-transparent bg-emerald-100 text-emerald-700'} variant={hasConflicts ? 'warning' : undefined}>
+              {hasConflicts ? 'Conflicts' : 'No conflicts'}
+            </Badge>
             {hasPendingApprovals && <Badge variant="secondary">Pending approvals</Badge>}
             {!isAtRisk && <Badge variant="outline">Healthy</Badge>}
           </div>

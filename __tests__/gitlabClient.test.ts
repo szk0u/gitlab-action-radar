@@ -137,24 +137,44 @@ describe('GitLabClient', () => {
   });
 
   it('buildHealthSignals should derive CI/conflict/approval signals and own-MR checks', async () => {
-    const mockFetch = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          approved_by: [{ user: { id: 7, name: 'Reviewer' } }],
-          approved: true,
-          approvals_left: 0
-        })
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          blocking_discussions_resolved: false,
-          unresolved_discussions_count: 2,
-          head_pipeline: { status: 'success' }
-        })
-      } as Response);
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url === 'https://gitlab.com/api/v4/projects/100/merge_requests/1/approvals') {
+        return {
+          ok: true,
+          json: async () => ({
+            approved_by: [{ user: { id: 7, name: 'Reviewer' } }],
+            approved: true,
+            approvals_left: 0
+          })
+        } as Response;
+      }
+
+      if (url === 'https://gitlab.com/api/v4/projects/100/merge_requests/1') {
+        return {
+          ok: true,
+          json: async () => ({
+            blocking_discussions_resolved: false,
+            unresolved_discussions_count: 2,
+            head_pipeline: { status: 'success' }
+          })
+        } as Response;
+      }
+
+      if (url === 'https://gitlab.com/api/v4/projects/200/merge_requests/2') {
+        return {
+          ok: true,
+          json: async () => ({
+            has_conflicts: true,
+            merge_status: 'cannot_be_merged',
+            head_pipeline: { status: 'failed' }
+          })
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
 
     const client = new GitLabClient({ baseUrl: 'https://gitlab.com', token: 'token' });
     const data: MergeRequest[] = [
@@ -180,8 +200,9 @@ describe('GitLabClient', () => {
         web_url: 'https://gitlab.com/group/project/-/merge_requests/2',
         state: 'opened',
         author: { id: 123, username: 'other', name: 'Other' },
-        has_conflicts: true,
-        merge_status: 'cannot_be_merged'
+        has_conflicts: false,
+        merge_status: 'can_be_merged',
+        pipeline: { status: 'success' }
       }
     ];
 
@@ -200,7 +221,7 @@ describe('GitLabClient', () => {
       }
     });
     expect(signals[1]).toMatchObject({
-      hasFailedCi: false,
+      hasFailedCi: true,
       hasConflicts: true,
       hasPendingApprovals: false,
       isCreatedByMe: false,
@@ -215,26 +236,49 @@ describe('GitLabClient', () => {
       'https://gitlab.com/api/v4/projects/100/merge_requests/1',
       expect.any(Object)
     );
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/200/merge_requests/2',
+      expect.any(Object)
+    );
   });
 
   it('buildHealthSignals should include reviewer comment activity details', async () => {
-    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      json: async () => [
-        {
-          id: 11,
-          created_at: '2026-02-18T09:00:00Z',
-          system: false,
-          author: { id: 99, username: 'me', name: 'Me' }
-        },
-        {
-          id: 10,
-          created_at: '2026-02-18T08:00:00Z',
-          system: false,
-          author: { id: 7, username: 'someone', name: 'Someone' }
-        }
-      ]
-    } as Response);
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url === 'https://gitlab.com/api/v4/projects/500/merge_requests/50') {
+        return {
+          ok: true,
+          json: async () => ({
+            has_conflicts: false,
+            merge_status: 'can_be_merged',
+            head_pipeline: { status: 'success' }
+          })
+        } as Response;
+      }
+
+      if (url === 'https://gitlab.com/api/v4/projects/500/merge_requests/50/notes?per_page=100&order_by=created_at&sort=desc') {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: 11,
+              created_at: '2026-02-18T09:00:00Z',
+              system: false,
+              author: { id: 99, username: 'me', name: 'Me' }
+            },
+            {
+              id: 10,
+              created_at: '2026-02-18T08:00:00Z',
+              system: false,
+              author: { id: 7, username: 'someone', name: 'Someone' }
+            }
+          ]
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
 
     const client = new GitLabClient({ baseUrl: 'https://gitlab.com', token: 'token' });
     const data: MergeRequest[] = [
@@ -259,8 +303,16 @@ describe('GitLabClient', () => {
       myLastCommentedAt: '2026-02-18T09:00:00Z',
       latestActivity: 'mr_update'
     });
+    expect(signals[0]).toMatchObject({
+      hasFailedCi: false,
+      hasConflicts: false
+    });
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/500/merge_requests/50/notes?per_page=100&order_by=created_at&sort=desc',
+      expect.any(Object)
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/500/merge_requests/50',
       expect.any(Object)
     );
   });
