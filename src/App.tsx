@@ -2,6 +2,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useMemo, useState } from 'react';
 import { GitLabClient } from './api/gitlabClient';
 import { MergeRequestList } from './components/MergeRequestList';
+import { Button } from './components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
+import { Input } from './components/ui/input';
 import { MergeRequestHealth } from './types/gitlab';
 
 const gitlabBaseUrl = import.meta.env.VITE_GITLAB_BASE_URL ?? 'https://gitlab.com';
@@ -163,40 +166,52 @@ export function App() {
   }, [authLoading, client]);
 
   return (
-    <main className="app-shell">
-      <h1>GitLab Action Radar</h1>
-      <p className="subtitle">Assigned to me / Review requested MRs</p>
-      <section className="auth-panel">
-        <div className="auth-actions">
-          <button type="button" onClick={openPatIssuePage}>
-            Open PAT page
-          </button>
-        </div>
-        <div className="auth-actions">
-          <input
-            type="password"
-            value={patInput}
-            onChange={(event) => setPatInput(event.target.value)}
-            placeholder="glpat-..."
-            aria-label="GitLab PAT"
-          />
-          <button type="button" onClick={() => void savePatToken()} disabled={authLoading}>
-            Save PAT
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => void clearSavedPatToken()}
-            disabled={authLoading || !hasSavedPatToken}
-          >
-            Clear saved PAT
-          </button>
-        </div>
-        {authMessage && <p className="auth-note">{authMessage}</p>}
-        {hasSavedPatToken && <p className="auth-note">現在は安全ストアのPATを使用しています。</p>}
-        {!hasSavedPatToken && gitlabTokenFromEnv && <p className="auth-note">現在は環境変数のPATを使用しています。</p>}
-      </section>
-      <MergeRequestList items={items} loading={loading} error={error} />
+    <main className="min-h-screen bg-radial-[at_50%_0%] from-slate-200 to-slate-100 px-4 py-6 text-slate-900">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
+        <Card>
+          <CardHeader className="gap-3">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+              <div>
+                <CardTitle className="text-2xl">GitLab Action Radar</CardTitle>
+                <CardDescription className="mt-1">Assigned to me / Review requested MRs</CardDescription>
+              </div>
+              <Button type="button" variant="outline" onClick={openPatIssuePage}>
+                Open PAT page
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                type="password"
+                value={patInput}
+                onChange={(event) => setPatInput(event.target.value)}
+                placeholder="glpat-..."
+                aria-label="GitLab PAT"
+                className="sm:flex-1"
+              />
+              <Button type="button" onClick={() => void savePatToken()} disabled={authLoading}>
+                Save PAT
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => void clearSavedPatToken()}
+                disabled={authLoading || !hasSavedPatToken}
+              >
+                Clear saved PAT
+              </Button>
+            </div>
+            {authMessage && <p className="text-sm text-slate-600">{authMessage}</p>}
+            {hasSavedPatToken && <p className="text-sm text-slate-600">現在は安全ストアのPATを使用しています。</p>}
+            {!hasSavedPatToken && gitlabTokenFromEnv && (
+              <p className="text-sm text-slate-600">現在は環境変数のPATを使用しています。</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <MergeRequestList items={items} loading={loading} error={error} />
+      </div>
     </main>
   );
 }

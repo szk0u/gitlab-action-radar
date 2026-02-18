@@ -1,110 +1,23 @@
+@import 'tailwindcss';
+
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  color: #1f2937;
-  background: #f3f4f6;
+  font-family:
+    'Instrument Sans',
+    'Noto Sans JP',
+    'Hiragino Kaku Gothic ProN',
+    'Yu Gothic',
+    sans-serif;
+  color: #0f172a;
+  background-color: #e2e8f0;
 }
 
-body {
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
   margin: 0;
-}
-
-.app-shell {
-  padding: 1rem;
-  min-width: 360px;
-}
-
-.mr-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.mr-card {
-  background: white;
-  border-radius: 8px;
-  padding: 0.75rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.flags {
-  margin-top: 0.5rem;
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.flag {
-  padding: 0.2rem 0.45rem;
-  border-radius: 999px;
-  font-size: 0.75rem;
-}
-
-.flag.danger {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.flag.warning {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.flag.neutral {
-  background: #e0e7ff;
-  color: #3730a3;
-}
-
-.subtitle {
-  margin-top: -0.5rem;
-  color: #4b5563;
-  font-size: 0.9rem;
-}
-
-.auth-panel {
-  margin-bottom: 1rem;
-}
-
-.auth-actions {
-  margin-bottom: 0.75rem;
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.auth-actions input {
-  flex: 1;
-  min-width: 180px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  padding: 0.45rem 0.6rem;
-  font-size: 0.85rem;
-}
-
-.auth-actions button {
-  border: 0;
-  border-radius: 6px;
-  padding: 0.45rem 0.7rem;
-  background: #111827;
-  color: #fff;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-
-.auth-actions button.secondary {
-  background: #6b7280;
-}
-
-.auth-actions button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.auth-note {
-  margin: 0.25rem 0;
-  font-size: 0.8rem;
-  color: #4b5563;
+  min-height: 100%;
 }
