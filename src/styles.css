@@ -62,3 +62,49 @@ body {
   color: #4b5563;
   font-size: 0.9rem;
 }
+
+.auth-panel {
+  margin-bottom: 1rem;
+}
+
+.auth-actions {
+  margin-bottom: 0.75rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.auth-actions input {
+  flex: 1;
+  min-width: 180px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+.auth-actions button {
+  border: 0;
+  border-radius: 6px;
+  padding: 0.45rem 0.7rem;
+  background: #111827;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.auth-actions button.secondary {
+  background: #6b7280;
+}
+
+.auth-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.auth-note {
+  margin: 0.25rem 0;
+  font-size: 0.8rem;
+  color: #4b5563;
+}

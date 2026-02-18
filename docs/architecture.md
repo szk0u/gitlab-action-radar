@@ -22,6 +22,7 @@
   - `/api/v4/user` でユーザーIDを解決。
   - `/api/v4/merge_requests` を assignee/reviewer 条件で2系統取得し統合。
   - MRデータを `MergeRequestHealth` に変換。
+  - PAT は Tauri コマンド経由で OS の安全ストアへ保存/取得。
 
 ## 3. データフロー
 1. アプリ起動時に Tauri がバックグラウンド起動。
@@ -37,6 +38,7 @@
 環境変数（Vite）:
 - `VITE_GITLAB_BASE_URL`
 - `VITE_GITLAB_TOKEN`
+- `VITE_GITLAB_PAT_ISSUE_URL`
 
 ## 5. 拡張案
 - 定期ポーリング（例: 60秒）

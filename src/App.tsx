@@ -1,20 +1,148 @@
+import { invoke } from '@tauri-apps/api/core';
 import { useEffect, useMemo, useState } from 'react';
 import { GitLabClient } from './api/gitlabClient';
 import { MergeRequestList } from './components/MergeRequestList';
 import { MergeRequestHealth } from './types/gitlab';
 
 const gitlabBaseUrl = import.meta.env.VITE_GITLAB_BASE_URL ?? 'https://gitlab.com';
-const gitlabToken = import.meta.env.VITE_GITLAB_TOKEN ?? '';
+const gitlabTokenFromEnv = import.meta.env.VITE_GITLAB_TOKEN ?? '';
+const gitlabPatIssueUrl =
+  import.meta.env.VITE_GITLAB_PAT_ISSUE_URL ?? `${gitlabBaseUrl.replace(/\/$/, '')}/-/user_settings/personal_access_tokens`;
+
+function toMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
 
 export function App() {
-  const client = useMemo(() => new GitLabClient({ baseUrl: gitlabBaseUrl, token: gitlabToken }), []);
+  const [patToken, setPatToken] = useState<string>(gitlabTokenFromEnv);
+  const [patInput, setPatInput] = useState<string>('');
+  const [hasSavedPatToken, setHasSavedPatToken] = useState<boolean>(false);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [authMessage, setAuthMessage] = useState<string | undefined>();
   const [items, setItems] = useState<MergeRequestHealth[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
+  const client = useMemo(() => {
+    if (!patToken) {
+      return undefined;
+    }
+
+    return new GitLabClient({ baseUrl: gitlabBaseUrl, token: patToken });
+  }, [patToken]);
+
   useEffect(() => {
-    if (!gitlabToken) {
-      setError('Set VITE_GITLAB_TOKEN in your environment.');
+    let alive = true;
+
+    const loadSavedPat = async () => {
+      if (!isTauriRuntime()) {
+        setAuthLoading(false);
+        return;
+      }
+
+      try {
+        const storedToken = await invoke<string | null>('load_pat');
+        if (!alive) {
+          return;
+        }
+
+        if (storedToken && storedToken.trim()) {
+          setPatToken(storedToken);
+          setHasSavedPatToken(true);
+          setAuthMessage('保存済みPATを安全ストアから読み込みました。');
+        } else {
+          setPatToken(gitlabTokenFromEnv);
+          setHasSavedPatToken(false);
+        }
+      } catch (err) {
+        if (!alive) {
+          return;
+        }
+
+        setPatToken(gitlabTokenFromEnv);
+        setHasSavedPatToken(false);
+        setAuthMessage(`保存済みPATの読み込みに失敗しました: ${toMessage(err)}`);
+      } finally {
+        if (alive) {
+          setAuthLoading(false);
+        }
+      }
+    };
+
+    void loadSavedPat();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const openPatIssuePage = () => {
+    const openedWindow = window.open(gitlabPatIssueUrl, '_blank', 'noopener,noreferrer');
+    if (!openedWindow) {
+      window.location.assign(gitlabPatIssueUrl);
+    }
+  };
+
+  const savePatToken = async () => {
+    const token = patInput.trim();
+    if (!token) {
+      setAuthMessage('PAT を入力してから保存してください。');
+      return;
+    }
+
+    if (!isTauriRuntime()) {
+      setAuthMessage('Tauri ランタイムで起動していないため、安全保存できません。');
+      return;
+    }
+
+    try {
+      await invoke('save_pat', { token });
+      setPatToken(token);
+      setPatInput('');
+      setHasSavedPatToken(true);
+      setAuthMessage('PAT を安全ストアに保存しました。');
+    } catch (err) {
+      setAuthMessage(`PAT の保存に失敗しました: ${toMessage(err)}`);
+    }
+  };
+
+  const clearSavedPatToken = async () => {
+    if (!isTauriRuntime()) {
+      setAuthMessage('Tauri ランタイムで起動していないため、保存済みPATを削除できません。');
+      return;
+    }
+
+    try {
+      await invoke('clear_pat');
+      setHasSavedPatToken(false);
+      setPatToken(gitlabTokenFromEnv);
+      setPatInput('');
+      setAuthMessage(
+        gitlabTokenFromEnv
+          ? '保存済みPATを削除し、環境変数の PAT に戻しました。'
+          : '保存済みPATを削除しました。'
+      );
+    } catch (err) {
+      setAuthMessage(`保存済みPATの削除に失敗しました: ${toMessage(err)}`);
+    }
+  };
+
+  useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
+    if (!client) {
+      setItems([]);
+      setLoading(false);
+      setError('PAT を保存するか、VITE_GITLAB_TOKEN を設定してください。');
       return;
     }
 
@@ -32,12 +160,42 @@ export function App() {
     };
 
     void load();
-  }, [client]);
+  }, [authLoading, client]);
 
   return (
     <main className="app-shell">
       <h1>GitLab Action Radar</h1>
       <p className="subtitle">Assigned to me / Review requested MRs</p>
+      <section className="auth-panel">
+        <div className="auth-actions">
+          <button type="button" onClick={openPatIssuePage}>
+            Open PAT page
+          </button>
+        </div>
+        <div className="auth-actions">
+          <input
+            type="password"
+            value={patInput}
+            onChange={(event) => setPatInput(event.target.value)}
+            placeholder="glpat-..."
+            aria-label="GitLab PAT"
+          />
+          <button type="button" onClick={() => void savePatToken()} disabled={authLoading}>
+            Save PAT
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void clearSavedPatToken()}
+            disabled={authLoading || !hasSavedPatToken}
+          >
+            Clear saved PAT
+          </button>
+        </div>
+        {authMessage && <p className="auth-note">{authMessage}</p>}
+        {hasSavedPatToken && <p className="auth-note">現在は安全ストアのPATを使用しています。</p>}
+        {!hasSavedPatToken && gitlabTokenFromEnv && <p className="auth-note">現在は環境変数のPATを使用しています。</p>}
+      </section>
       <MergeRequestList items={items} loading={loading} error={error} />
     </main>
   );

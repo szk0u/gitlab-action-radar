@@ -24,5 +24,12 @@ pnpm test
 
 プロジェクトIDの指定は不要です。
 
+## 認証
+- PAT のみ対応
+- 画面の `Open PAT page` で GitLab の PAT 発行ページを開けます
+- 画面の `Save PAT` で PAT を OS の安全ストア（macOS Keychain など）に保存し、次回起動時も利用できます
+- `VITE_GITLAB_TOKEN` を設定しておくと初期値として利用されます
+- `VITE_GITLAB_PAT_ISSUE_URL` で PAT 発行ページ URL を上書きできます
+
 ## アーキテクチャ
 `docs/architecture.md` を参照。
