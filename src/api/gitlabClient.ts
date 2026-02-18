@@ -1,4 +1,4 @@
-import { GitLabUser, MergeRequest, MergeRequestHealth } from '../types/gitlab';
+import { GitLabUser, MergeRequest, MergeRequestHealth, MyRelevantMergeRequests } from '../types/gitlab';
 
 export interface GitLabClientConfig {
   baseUrl: string;
@@ -33,7 +33,24 @@ export class GitLabClient {
     return this.request<GitLabUser>('/api/v4/user');
   }
 
-  async listMyRelevantMergeRequests(): Promise<MergeRequest[]> {
+  private dedupeById(mergeRequests: MergeRequest[]): MergeRequest[] {
+    const dedupedById = new Map<number, MergeRequest>();
+    for (const mr of mergeRequests) {
+      dedupedById.set(mr.id, mr);
+    }
+
+    return [...dedupedById.values()];
+  }
+
+  private isDraftMergeRequest(mergeRequest: MergeRequest): boolean {
+    return mergeRequest.draft === true || mergeRequest.work_in_progress === true;
+  }
+
+  private isReviewedByUser(mergeRequest: MergeRequest, userId: number): boolean {
+    return (mergeRequest.approved_by ?? []).some((approval) => approval.user.id === userId);
+  }
+
+  async listMyRelevantMergeRequests(): Promise<MyRelevantMergeRequests> {
     const currentUser = await this.getCurrentUser();
 
     const [assigned, reviewRequested] = await Promise.all([
@@ -45,13 +62,13 @@ export class GitLabClient {
       )
     ]);
 
-    const merged = [...assigned, ...reviewRequested];
-    const dedupedById = new Map<number, MergeRequest>();
-    for (const mr of merged) {
-      dedupedById.set(mr.id, mr);
-    }
-
-    return [...dedupedById.values()];
+    return {
+      assigned: this.dedupeById(assigned),
+      reviewRequested: this.dedupeById(reviewRequested).filter(
+        (mergeRequest) =>
+          !this.isDraftMergeRequest(mergeRequest) && !this.isReviewedByUser(mergeRequest, currentUser.id)
+      )
+    };
   }
 
   buildHealthSignals(mergeRequests: MergeRequest[]): MergeRequestHealth[] {

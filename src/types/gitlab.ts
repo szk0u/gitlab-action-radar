@@ -5,8 +5,13 @@ export interface MergeRequest {
   title: string;
   web_url: string;
   state: string;
+  draft?: boolean;
+  work_in_progress?: boolean;
   has_conflicts: boolean;
   merge_status: string;
+  references?: {
+    full?: string;
+  };
   pipeline?: {
     status: string;
   };
@@ -25,4 +30,9 @@ export interface MergeRequestHealth {
   hasFailedCi: boolean;
   hasConflicts: boolean;
   hasPendingApprovals: boolean;
+}
+
+export interface MyRelevantMergeRequests {
+  assigned: MergeRequest[];
+  reviewRequested: MergeRequest[];
 }

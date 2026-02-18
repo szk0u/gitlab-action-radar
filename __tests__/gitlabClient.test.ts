@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { GitLabClient } from '../src/api/gitlabClient';
 import { MergeRequest } from '../src/types/gitlab';
 
@@ -7,7 +7,7 @@ describe('GitLabClient', () => {
     vi.restoreAllMocks();
   });
 
-  it('listMyRelevantMergeRequests should aggregate assigned and review requested MRs', async () => {
+  it('listMyRelevantMergeRequests should split assigned/reviewer MRs and filter reviewer-only noise', async () => {
     const mockFetch = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({
@@ -16,43 +16,67 @@ describe('GitLabClient', () => {
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => [
-          {
-            id: 1,
-            iid: 10,
-            project_id: 100,
-            title: 'Assigned MR',
-            web_url: 'https://gitlab.com/example/mr/10',
-            state: 'opened',
-            has_conflicts: false,
-            merge_status: 'can_be_merged'
-          }
-        ] satisfies MergeRequest[]
+        json: async () =>
+          [
+            {
+              id: 1,
+              iid: 10,
+              project_id: 100,
+              title: 'Assigned MR',
+              web_url: 'https://gitlab.com/group/project/-/merge_requests/10',
+              state: 'opened',
+              has_conflicts: false,
+              merge_status: 'can_be_merged'
+            },
+            {
+              id: 1,
+              iid: 10,
+              project_id: 100,
+              title: 'Assigned MR',
+              web_url: 'https://gitlab.com/group/project/-/merge_requests/10',
+              state: 'opened',
+              has_conflicts: false,
+              merge_status: 'can_be_merged'
+            }
+          ] satisfies MergeRequest[]
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => [
-          {
-            id: 1,
-            iid: 10,
-            project_id: 100,
-            title: 'Assigned MR',
-            web_url: 'https://gitlab.com/example/mr/10',
-            state: 'opened',
-            has_conflicts: false,
-            merge_status: 'can_be_merged'
-          },
-          {
-            id: 2,
-            iid: 20,
-            project_id: 200,
-            title: 'Review MR',
-            web_url: 'https://gitlab.com/example/mr/20',
-            state: 'opened',
-            has_conflicts: true,
-            merge_status: 'cannot_be_merged'
-          }
-        ] satisfies MergeRequest[]
+        json: async () =>
+          [
+            {
+              id: 2,
+              iid: 20,
+              project_id: 200,
+              title: 'Draft review MR',
+              web_url: 'https://gitlab.com/group/project/-/merge_requests/20',
+              state: 'opened',
+              draft: true,
+              has_conflicts: false,
+              merge_status: 'can_be_merged'
+            },
+            {
+              id: 3,
+              iid: 30,
+              project_id: 300,
+              title: 'Already reviewed MR',
+              web_url: 'https://gitlab.com/group/project/-/merge_requests/30',
+              state: 'opened',
+              has_conflicts: false,
+              merge_status: 'can_be_merged',
+              approved_by: [{ user: { id: 99, name: 'Me' } }]
+            },
+            {
+              id: 4,
+              iid: 40,
+              project_id: 400,
+              title: 'Review target MR',
+              web_url: 'https://gitlab.com/group/project/-/merge_requests/40',
+              state: 'opened',
+              has_conflicts: true,
+              merge_status: 'cannot_be_merged'
+            }
+          ] satisfies MergeRequest[]
       } as Response);
 
     const client = new GitLabClient({ baseUrl: 'https://gitlab.com/', token: 'token' });
@@ -71,7 +95,9 @@ describe('GitLabClient', () => {
       'https://gitlab.com/api/v4/merge_requests?scope=all&state=opened&reviewer_id=99&per_page=100',
       expect.any(Object)
     );
-    expect(result.map((mr) => mr.id)).toEqual([1, 2]);
+
+    expect(result.assigned.map((mr) => mr.id)).toEqual([1]);
+    expect(result.reviewRequested.map((mr) => mr.id)).toEqual([4]);
   });
 
   it('request should throw on non-2xx response', async () => {

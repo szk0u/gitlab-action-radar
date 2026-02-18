@@ -29,7 +29,8 @@ export function App() {
   const [hasSavedPatToken, setHasSavedPatToken] = useState<boolean>(false);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [authMessage, setAuthMessage] = useState<string | undefined>();
-  const [items, setItems] = useState<MergeRequestHealth[]>([]);
+  const [assignedItems, setAssignedItems] = useState<MergeRequestHealth[]>([]);
+  const [reviewRequestedItems, setReviewRequestedItems] = useState<MergeRequestHealth[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
@@ -143,7 +144,8 @@ export function App() {
     }
 
     if (!client) {
-      setItems([]);
+      setAssignedItems([]);
+      setReviewRequestedItems([]);
       setLoading(false);
       setError('PAT を保存するか、VITE_GITLAB_TOKEN を設定してください。');
       return;
@@ -154,7 +156,8 @@ export function App() {
       setError(undefined);
       try {
         const mergeRequests = await client.listMyRelevantMergeRequests();
-        setItems(client.buildHealthSignals(mergeRequests));
+        setAssignedItems(client.buildHealthSignals(mergeRequests.assigned));
+        setReviewRequestedItems(client.buildHealthSignals(mergeRequests.reviewRequested));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
@@ -210,7 +213,12 @@ export function App() {
           </CardContent>
         </Card>
 
-        <MergeRequestList items={items} loading={loading} error={error} />
+        <MergeRequestList
+          assignedItems={assignedItems}
+          reviewRequestedItems={reviewRequestedItems}
+          loading={loading}
+          error={error}
+        />
       </div>
     </main>
   );
