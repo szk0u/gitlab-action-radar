@@ -66,7 +66,58 @@ function renderOwnMergeRequestChecks(item: MergeRequestHealth) {
   );
 }
 
-function renderMergeRequestItem(item: MergeRequestHealth) {
+function formatDateTime(value: string | undefined): string {
+  if (!value) {
+    return '-';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '-';
+  }
+
+  return new Intl.DateTimeFormat('ja-JP', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(date);
+}
+
+function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
+  if (tabKey !== 'review' || !item.reviewerChecks) {
+    return null;
+  }
+
+  const { hasMyComment, myLastCommentedAt, latestActivity } = item.reviewerChecks;
+  const latestActivityLabel =
+    latestActivity === 'mr_update'
+      ? 'MR更新が最新'
+      : latestActivity === 'my_comment'
+        ? '自分のコメントが最新'
+        : latestActivity === 'same_time'
+          ? '同時刻'
+          : '比較不可';
+
+  return (
+    <div className="mt-3 space-y-1.5 border-t border-slate-200 pt-3 text-xs text-slate-600">
+      <div className="flex flex-wrap gap-2">
+        <Badge variant="outline">Reviewer activity</Badge>
+        <Badge
+          className={hasMyComment ? 'border-transparent bg-emerald-100 text-emerald-700' : ''}
+          variant={hasMyComment ? undefined : 'warning'}
+        >
+          {hasMyComment ? 'Commented' : 'No comment'}
+        </Badge>
+      </div>
+      <p>MR updated: {formatDateTime(item.mergeRequest.updated_at)}</p>
+      <p>My last comment: {formatDateTime(myLastCommentedAt)}</p>
+      <p>Latest: {latestActivityLabel}</p>
+    </div>
+  );
+}
+
+function renderMergeRequestItem(item: MergeRequestHealth, tabKey: TabKey) {
   const { mergeRequest, hasFailedCi, hasConflicts, hasPendingApprovals } = item;
   const isAtRisk = hasFailedCi || hasConflicts || hasPendingApprovals;
 
@@ -100,13 +151,14 @@ function renderMergeRequestItem(item: MergeRequestHealth) {
             {!isAtRisk && <Badge variant="outline">Healthy</Badge>}
           </div>
           {renderOwnMergeRequestChecks(item)}
+          {renderReviewerChecks(item, tabKey)}
         </CardContent>
       </Card>
     </li>
   );
 }
 
-function renderList(items: MergeRequestHealth[], emptyMessage: string) {
+function renderList(items: MergeRequestHealth[], emptyMessage: string, tabKey: TabKey) {
   if (items.length === 0) {
     return (
       <Card>
@@ -115,7 +167,7 @@ function renderList(items: MergeRequestHealth[], emptyMessage: string) {
     );
   }
 
-  return <ul className="m-0 flex list-none flex-col gap-3 p-0">{items.map(renderMergeRequestItem)}</ul>;
+  return <ul className="m-0 flex list-none flex-col gap-3 p-0">{items.map((item) => renderMergeRequestItem(item, tabKey))}</ul>;
 }
 
 export function MergeRequestList({ assignedItems, reviewRequestedItems, loading, error }: MergeRequestListProps) {
@@ -166,8 +218,8 @@ export function MergeRequestList({ assignedItems, reviewRequestedItems, loading,
         <TabsTrigger value="assigned">Assigned ({assignedItems.length})</TabsTrigger>
         <TabsTrigger value="review">Review requested ({reviewRequestedItems.length})</TabsTrigger>
       </TabsList>
-      <TabsContent value="assigned">{renderList(assignedItems, 'No assigned merge requests.')}</TabsContent>
-      <TabsContent value="review">{renderList(reviewRequestedItems, 'No review-requested merge requests.')}</TabsContent>
+      <TabsContent value="assigned">{renderList(assignedItems, 'No assigned merge requests.', 'assigned')}</TabsContent>
+      <TabsContent value="review">{renderList(reviewRequestedItems, 'No review-requested merge requests.', 'review')}</TabsContent>
     </Tabs>
   );
 }

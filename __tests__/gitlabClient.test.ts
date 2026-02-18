@@ -216,4 +216,52 @@ describe('GitLabClient', () => {
       expect.any(Object)
     );
   });
+
+  it('buildHealthSignals should include reviewer comment activity details', async () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      json: async () => [
+        {
+          id: 11,
+          created_at: '2026-02-18T09:00:00Z',
+          system: false,
+          author: { id: 99, username: 'me', name: 'Me' }
+        },
+        {
+          id: 10,
+          created_at: '2026-02-18T08:00:00Z',
+          system: false,
+          author: { id: 7, username: 'someone', name: 'Someone' }
+        }
+      ]
+    } as Response);
+
+    const client = new GitLabClient({ baseUrl: 'https://gitlab.com', token: 'token' });
+    const data: MergeRequest[] = [
+      {
+        id: 5,
+        iid: 50,
+        project_id: 500,
+        title: 'Review MR',
+        web_url: 'https://gitlab.com/group/project/-/merge_requests/50',
+        state: 'opened',
+        updated_at: '2026-02-18T10:00:00Z',
+        author: { id: 123, username: 'author', name: 'Author' },
+        has_conflicts: false,
+        merge_status: 'can_be_merged'
+      }
+    ];
+
+    const signals = await client.buildHealthSignals(data, 99, { includeReviewerChecks: true });
+
+    expect(signals[0].reviewerChecks).toMatchObject({
+      hasMyComment: true,
+      myLastCommentedAt: '2026-02-18T09:00:00Z',
+      latestActivity: 'mr_update'
+    });
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/500/merge_requests/50/notes?per_page=100&order_by=created_at&sort=desc',
+      expect.any(Object)
+    );
+  });
 });

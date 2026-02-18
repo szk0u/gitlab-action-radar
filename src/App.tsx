@@ -154,7 +154,9 @@ export function App() {
       const mergeRequests = await client.listMyRelevantMergeRequests();
       const [assignedSignals, reviewRequestedSignals] = await Promise.all([
         client.buildHealthSignals(mergeRequests.assigned, mergeRequests.currentUserId),
-        client.buildHealthSignals(mergeRequests.reviewRequested, mergeRequests.currentUserId)
+        client.buildHealthSignals(mergeRequests.reviewRequested, mergeRequests.currentUserId, {
+          includeReviewerChecks: true
+        })
       ]);
       setAssignedItems(assignedSignals);
       setReviewRequestedItems(reviewRequestedSignals);

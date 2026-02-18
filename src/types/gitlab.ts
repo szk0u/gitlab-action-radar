@@ -5,6 +5,7 @@ export interface MergeRequest {
   title: string;
   web_url: string;
   state: string;
+  updated_at?: string;
   author?: {
     id: number;
     username: string;
@@ -37,6 +38,7 @@ export interface MergeRequestHealth {
   hasPendingApprovals: boolean;
   isCreatedByMe: boolean;
   ownMrChecks?: OwnMergeRequestChecks;
+  reviewerChecks?: ReviewerMergeRequestChecks;
 }
 
 export interface MyRelevantMergeRequests {
@@ -67,4 +69,21 @@ export interface OwnMergeRequestChecks {
   hasUnresolvedComments: boolean;
   isCiSuccessful: boolean;
   isCiFailed: boolean;
+}
+
+export interface MergeRequestNote {
+  id: number;
+  created_at: string;
+  system?: boolean;
+  author?: {
+    id: number;
+    username: string;
+    name: string;
+  };
+}
+
+export interface ReviewerMergeRequestChecks {
+  hasMyComment: boolean;
+  myLastCommentedAt?: string;
+  latestActivity: 'mr_update' | 'my_comment' | 'same_time' | 'unknown';
 }

@@ -4,8 +4,10 @@ import {
   MergeRequestApprovals,
   MergeRequestDetails,
   MergeRequestHealth,
+  MergeRequestNote,
   MyRelevantMergeRequests,
-  OwnMergeRequestChecks
+  OwnMergeRequestChecks,
+  ReviewerMergeRequestChecks
 } from '../types/gitlab';
 
 export interface GitLabClientConfig {
@@ -13,11 +15,16 @@ export interface GitLabClientConfig {
   token: string;
 }
 
+export interface BuildHealthSignalsOptions {
+  includeReviewerChecks?: boolean;
+}
+
 export class GitLabClient {
   private readonly baseUrl: string;
   private readonly token: string;
   private readonly approvalsCache = new Map<string, Promise<MergeRequestApprovals | undefined>>();
   private readonly detailsCache = new Map<string, Promise<MergeRequestDetails | undefined>>();
+  private readonly notesCache = new Map<string, Promise<MergeRequestNote[] | undefined>>();
 
   constructor(config: GitLabClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
@@ -94,6 +101,23 @@ export class GitLabClient {
     return promise;
   }
 
+  private getMergeRequestNotes(mergeRequest: MergeRequest): Promise<MergeRequestNote[] | undefined> {
+    const key = this.getMergeRequestKey(mergeRequest);
+    const cached = this.notesCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    const promise = this.request<MergeRequestNote[]>(
+      `/api/v4/projects/${encodeURIComponent(String(mergeRequest.project_id))}/merge_requests/${encodeURIComponent(
+        String(mergeRequest.iid)
+      )}/notes?per_page=100&order_by=created_at&sort=desc`
+    ).catch(() => undefined);
+
+    this.notesCache.set(key, promise);
+    return promise;
+  }
+
   private async isReviewedByUser(mergeRequest: MergeRequest, userId: number): Promise<boolean> {
     if ((mergeRequest.approved_by ?? []).some((approval) => approval.user.id === userId)) {
       return true;
@@ -160,13 +184,57 @@ export class GitLabClient {
     };
   }
 
-  async buildHealthSignals(mergeRequests: MergeRequest[], currentUserId: number): Promise<MergeRequestHealth[]> {
+  private resolveLatestActivity(
+    mergeRequestUpdatedAt: string | undefined,
+    myLastCommentedAt: string | undefined
+  ): ReviewerMergeRequestChecks['latestActivity'] {
+    if (!myLastCommentedAt || !mergeRequestUpdatedAt) {
+      return 'unknown';
+    }
+
+    const mergeRequestUpdatedAtMs = Date.parse(mergeRequestUpdatedAt);
+    const myLastCommentedAtMs = Date.parse(myLastCommentedAt);
+    if (Number.isNaN(mergeRequestUpdatedAtMs) || Number.isNaN(myLastCommentedAtMs)) {
+      return 'unknown';
+    }
+    if (mergeRequestUpdatedAtMs > myLastCommentedAtMs) {
+      return 'mr_update';
+    }
+    if (mergeRequestUpdatedAtMs < myLastCommentedAtMs) {
+      return 'my_comment';
+    }
+    return 'same_time';
+  }
+
+  private async buildReviewerMergeRequestChecks(
+    mergeRequest: MergeRequest,
+    currentUserId: number
+  ): Promise<ReviewerMergeRequestChecks> {
+    const notes = await this.getMergeRequestNotes(mergeRequest);
+    const myLastComment = (notes ?? []).find((note) => note.author?.id === currentUserId && !note.system);
+    const myLastCommentedAt = myLastComment?.created_at;
+
+    return {
+      hasMyComment: Boolean(myLastCommentedAt),
+      myLastCommentedAt,
+      latestActivity: this.resolveLatestActivity(mergeRequest.updated_at, myLastCommentedAt)
+    };
+  }
+
+  async buildHealthSignals(
+    mergeRequests: MergeRequest[],
+    currentUserId: number,
+    options?: BuildHealthSignalsOptions
+  ): Promise<MergeRequestHealth[]> {
     return Promise.all(
       mergeRequests.map(async (mergeRequest) => {
         const approvalsRequired = mergeRequest.approvals_required ?? 0;
         const approvedCount = mergeRequest.approved_by?.length ?? 0;
         const isCreatedByMe = mergeRequest.author?.id === currentUserId;
         const ownMrChecks = isCreatedByMe ? await this.buildOwnMergeRequestChecks(mergeRequest) : undefined;
+        const reviewerChecks = options?.includeReviewerChecks
+          ? await this.buildReviewerMergeRequestChecks(mergeRequest, currentUserId)
+          : undefined;
 
         return {
           mergeRequest,
@@ -174,7 +242,8 @@ export class GitLabClient {
           hasConflicts: mergeRequest.has_conflicts || mergeRequest.merge_status === 'cannot_be_merged',
           hasPendingApprovals: approvalsRequired > approvedCount,
           isCreatedByMe,
-          ownMrChecks
+          ownMrChecks,
+          reviewerChecks
         };
       })
     );
