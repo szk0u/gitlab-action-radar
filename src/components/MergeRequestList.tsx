@@ -134,12 +134,12 @@ function renderMergeRequestItem(
             <FolderGit2 className="size-3.5" />
             {getProjectLabel(mergeRequest)}
           </p>
-          <CardTitle className="text-base leading-snug">
+          <CardTitle className="min-w-0 text-base leading-snug">
             <a
               href={mergeRequest.web_url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-start gap-2 text-slate-900 underline-offset-4 hover:underline"
+              className="flex w-full min-w-0 items-start gap-2 text-slate-900 underline-offset-4 hover:underline"
               onClick={(event) => {
                 if (!onOpenMergeRequest) {
                   return;
@@ -149,7 +149,7 @@ function renderMergeRequestItem(
               }}
             >
               <GitPullRequest className="mt-0.5 size-4 shrink-0 text-slate-500" />
-              <span>
+              <span className="min-w-0 [overflow-wrap:anywhere]">
                 !{mergeRequest.iid} {mergeRequest.title}
               </span>
             </a>
