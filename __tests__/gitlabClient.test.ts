@@ -63,8 +63,7 @@ describe('GitLabClient', () => {
               web_url: 'https://gitlab.com/group/project/-/merge_requests/30',
               state: 'opened',
               has_conflicts: false,
-              merge_status: 'can_be_merged',
-              approved_by: [{ user: { id: 99, name: 'Me' } }]
+              merge_status: 'can_be_merged'
             },
             {
               id: 4,
@@ -77,6 +76,18 @@ describe('GitLabClient', () => {
               merge_status: 'cannot_be_merged'
             }
           ] satisfies MergeRequest[]
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          approved_by: [{ user: { id: 99, name: 'Me' } }]
+        })
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          approved_by: []
+        })
       } as Response);
 
     const client = new GitLabClient({ baseUrl: 'https://gitlab.com/', token: 'token' });
@@ -93,6 +104,14 @@ describe('GitLabClient', () => {
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/merge_requests?scope=all&state=opened&reviewer_id=99&per_page=100',
+      expect.any(Object)
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/300/merge_requests/30/approvals',
+      expect.any(Object)
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/400/merge_requests/40/approvals',
       expect.any(Object)
     );
 

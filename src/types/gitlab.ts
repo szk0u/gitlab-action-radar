@@ -36,3 +36,7 @@ export interface MyRelevantMergeRequests {
   assigned: MergeRequest[];
   reviewRequested: MergeRequest[];
 }
+
+export interface MergeRequestApprovals {
+  approved_by: Array<{ user: { id: number; name: string } }>;
+}

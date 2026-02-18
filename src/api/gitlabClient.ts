@@ -1,4 +1,10 @@
-import { GitLabUser, MergeRequest, MergeRequestHealth, MyRelevantMergeRequests } from '../types/gitlab';
+import {
+  GitLabUser,
+  MergeRequest,
+  MergeRequestApprovals,
+  MergeRequestHealth,
+  MyRelevantMergeRequests
+} from '../types/gitlab';
 
 export interface GitLabClientConfig {
   baseUrl: string;
@@ -46,8 +52,25 @@ export class GitLabClient {
     return mergeRequest.draft === true || mergeRequest.work_in_progress === true;
   }
 
-  private isReviewedByUser(mergeRequest: MergeRequest, userId: number): boolean {
-    return (mergeRequest.approved_by ?? []).some((approval) => approval.user.id === userId);
+  private async getMergeRequestApprovals(mergeRequest: MergeRequest): Promise<MergeRequestApprovals> {
+    return this.request<MergeRequestApprovals>(
+      `/api/v4/projects/${encodeURIComponent(String(mergeRequest.project_id))}/merge_requests/${encodeURIComponent(
+        String(mergeRequest.iid)
+      )}/approvals`
+    );
+  }
+
+  private async isReviewedByUser(mergeRequest: MergeRequest, userId: number): Promise<boolean> {
+    if ((mergeRequest.approved_by ?? []).some((approval) => approval.user.id === userId)) {
+      return true;
+    }
+
+    try {
+      const approvals = await this.getMergeRequestApprovals(mergeRequest);
+      return (approvals.approved_by ?? []).some((approval) => approval.user.id === userId);
+    } catch {
+      return false;
+    }
   }
 
   async listMyRelevantMergeRequests(): Promise<MyRelevantMergeRequests> {
@@ -62,12 +85,22 @@ export class GitLabClient {
       )
     ]);
 
+    const filteredReviewRequested = this.dedupeById(reviewRequested).filter(
+      (mergeRequest) => !this.isDraftMergeRequest(mergeRequest)
+    );
+
+    const reviewRequestedWithReviewState = await Promise.all(
+      filteredReviewRequested.map(async (mergeRequest) => ({
+        mergeRequest,
+        reviewedByMe: await this.isReviewedByUser(mergeRequest, currentUser.id)
+      }))
+    );
+
     return {
       assigned: this.dedupeById(assigned),
-      reviewRequested: this.dedupeById(reviewRequested).filter(
-        (mergeRequest) =>
-          !this.isDraftMergeRequest(mergeRequest) && !this.isReviewedByUser(mergeRequest, currentUser.id)
-      )
+      reviewRequested: reviewRequestedWithReviewState
+        .filter((item) => !item.reviewedByMe)
+        .map((item) => item.mergeRequest)
     };
   }
 
