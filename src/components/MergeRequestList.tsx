@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, FolderGit2, GitPullRequest } from 'lucide-react';
 import { MergeRequest, MergeRequestHealth, ReviewerReviewStatus } from '../types/gitlab';
-import { Badge } from './ui/badge';
+import { cn } from '../lib/utils';
+import { Badge, badgeVariants } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 
@@ -14,6 +15,7 @@ interface MergeRequestListProps {
 }
 
 type TabKey = 'assigned' | 'review';
+type ReviewStatusFilter = ReviewerReviewStatus | 'all';
 
 function getProjectLabel(mergeRequest: MergeRequest): string {
   const ref = mergeRequest.references?.full;
@@ -268,14 +270,37 @@ export function MergeRequestList({
   onOpenMergeRequest
 }: MergeRequestListProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('assigned');
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<ReviewStatusFilter>('all');
   const sortedReviewRequestedItems = useMemo(
     () => sortReviewRequestedItems(reviewRequestedItems),
     [reviewRequestedItems]
   );
+  const filteredReviewRequestedItems = useMemo(() => {
+    if (reviewStatusFilter === 'all') {
+      return sortedReviewRequestedItems;
+    }
+    return sortedReviewRequestedItems.filter((item) => getReviewStatus(item) === reviewStatusFilter);
+  }, [reviewStatusFilter, sortedReviewRequestedItems]);
   const reviewStatusCounts = useMemo(
     () => summarizeReviewerStatuses(reviewRequestedItems),
     [reviewRequestedItems]
   );
+  const reviewListEmptyMessage = useMemo(() => {
+    if (reviewStatusFilter === 'needs_review') {
+      return 'No review-requested merge requests in 要レビュー.';
+    }
+    if (reviewStatusFilter === 'new') {
+      return 'No review-requested merge requests in 未着手.';
+    }
+    if (reviewStatusFilter === 'waiting_for_author') {
+      return 'No review-requested merge requests in 作者修正待ち.';
+    }
+    return 'No review-requested merge requests.';
+  }, [reviewStatusFilter]);
+
+  const toggleReviewStatusFilter = (status: ReviewerReviewStatus) => {
+    setReviewStatusFilter((current) => (current === status ? 'all' : status));
+  };
 
   useEffect(() => {
     if (assignedItems.length === 0 && reviewRequestedItems.length > 0) {
@@ -328,12 +353,45 @@ export function MergeRequestList({
       <TabsContent value="review" className="space-y-3">
         <Card>
           <CardContent className="flex flex-wrap gap-2 pt-4 text-xs text-slate-600">
-            <Badge variant="destructive">要レビュー {reviewStatusCounts.needsReview}</Badge>
-            <Badge variant="secondary">作者修正待ち {reviewStatusCounts.waitingForAuthor}</Badge>
-            <Badge variant="warning">未着手 {reviewStatusCounts.new}</Badge>
+            <button
+              type="button"
+              aria-pressed={reviewStatusFilter === 'needs_review'}
+              className={cn(
+                badgeVariants({ variant: 'destructive' }),
+                'cursor-pointer transition-opacity',
+                reviewStatusFilter === 'needs_review' ? 'ring-2 ring-red-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+              )}
+              onClick={() => toggleReviewStatusFilter('needs_review')}
+            >
+              要レビュー {reviewStatusCounts.needsReview}
+            </button>
+            <button
+              type="button"
+              aria-pressed={reviewStatusFilter === 'new'}
+              className={cn(
+                badgeVariants({ variant: 'warning' }),
+                'cursor-pointer transition-opacity',
+                reviewStatusFilter === 'new' ? 'ring-2 ring-amber-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+              )}
+              onClick={() => toggleReviewStatusFilter('new')}
+            >
+              未着手 {reviewStatusCounts.new}
+            </button>
+            <button
+              type="button"
+              aria-pressed={reviewStatusFilter === 'waiting_for_author'}
+              className={cn(
+                badgeVariants({ variant: 'secondary' }),
+                'cursor-pointer transition-opacity',
+                reviewStatusFilter === 'waiting_for_author' ? 'ring-2 ring-slate-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+              )}
+              onClick={() => toggleReviewStatusFilter('waiting_for_author')}
+            >
+              作者修正待ち {reviewStatusCounts.waitingForAuthor}
+            </button>
           </CardContent>
         </Card>
-        {renderList(sortedReviewRequestedItems, 'No review-requested merge requests.', 'review', onOpenMergeRequest)}
+        {renderList(filteredReviewRequestedItems, reviewListEmptyMessage, 'review', onOpenMergeRequest)}
       </TabsContent>
     </Tabs>
   );
