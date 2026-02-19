@@ -129,6 +129,26 @@ fn open_external_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_notification_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        return open::that_detached("x-apple.systempreferences:com.apple.preference.notifications")
+            .map_err(|err| format!("failed to open notification settings: {err}"));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        return open::that_detached("ms-settings:notifications")
+            .map_err(|err| format!("failed to open notification settings: {err}"));
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Err("this platform does not support opening notification settings automatically".to_string())
+    }
+}
+
+#[tauri::command]
 fn update_tray_indicator(app: tauri::AppHandle, payload: TrayIndicatorPayload) -> Result<(), String> {
     let tray = app
         .tray_by_id(TRAY_ID)
@@ -161,11 +181,13 @@ fn update_tray_indicator(app: tauri::AppHandle, payload: TrayIndicatorPayload) -
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .invoke_handler(tauri::generate_handler![
             save_pat,
             load_pat,
             clear_pat,
             open_external_url,
+            open_notification_settings,
             update_tray_indicator
         ])
         .setup(|app| {

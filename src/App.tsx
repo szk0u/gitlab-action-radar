@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { requestPermission as requestNotificationPermissionApi, sendNotification } from '@tauri-apps/plugin-notification';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GitLabClient } from './api/gitlabClient';
@@ -142,6 +143,44 @@ interface TrayIndicatorSummary {
   actionableTotalCount: number;
 }
 
+type NotificationPermissionState = NotificationPermission | 'unsupported';
+
+function normalizeNotificationPermissionState(value: string): NotificationPermissionState {
+  if (value === 'granted' || value === 'denied' || value === 'default') {
+    return value;
+  }
+  return 'default';
+}
+
+function getNotificationPermissionState(): NotificationPermissionState {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'unsupported';
+  }
+  return Notification.permission;
+}
+
+async function requestNotificationPermission(): Promise<NotificationPermissionState> {
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    return 'unsupported';
+  }
+
+  const permission = await requestNotificationPermissionApi();
+  return normalizeNotificationPermissionState(permission);
+}
+
+function getNotificationPermissionLabel(permission: NotificationPermissionState): string {
+  if (permission === 'granted') {
+    return '許可済み';
+  }
+  if (permission === 'denied') {
+    return '拒否';
+  }
+  if (permission === 'default') {
+    return '未選択';
+  }
+  return '非対応環境';
+}
+
 function summarizeReviewStatusCounts(items: MergeRequestHealth[]): ReviewStatusCounts {
   const result: ReviewStatusCounts = {
     total: items.length,
@@ -218,6 +257,9 @@ export function App() {
   const [reviewReminderTimeInput, setReviewReminderTimeInput] = useState('09:00');
   const [notifiedReviewReminderSlots, setNotifiedReviewReminderSlots] = useState<string[]>([]);
   const [reviewReminderMessage, setReviewReminderMessage] = useState<string | undefined>();
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() =>
+    getNotificationPermissionState()
+  );
   const [autoPollingEnabled, setAutoPollingEnabled] = useState(true);
   const [autoPollingIntervalMinutes, setAutoPollingIntervalMinutes] = useState(defaultAutoPollingIntervalMinutes);
   const loadInFlightRef = useRef(false);
@@ -317,6 +359,91 @@ export function App() {
     void openExternalUrl(gitlabPatIssueUrl);
   };
 
+  const ensureNotificationPermissionForSend = useCallback(async (): Promise<NotificationPermissionState> => {
+    const currentPermission = getNotificationPermissionState();
+    if (currentPermission === 'unsupported') {
+      setNotificationPermission(currentPermission);
+      return currentPermission;
+    }
+
+    let nextPermission: NotificationPermissionState = currentPermission;
+    if (currentPermission === 'default') {
+      nextPermission = await requestNotificationPermission();
+    }
+
+    setNotificationPermission(nextPermission);
+    return nextPermission;
+  }, []);
+
+  const refreshNotificationPermission = useCallback(() => {
+    setNotificationPermission(getNotificationPermissionState());
+  }, []);
+
+  const openNotificationPermissionScreen = useCallback(async () => {
+    const currentPermission = getNotificationPermissionState();
+    setNotificationPermission(currentPermission);
+
+    if (currentPermission === 'unsupported') {
+      setReviewReminderMessage('この環境では通知機能を利用できません。');
+      return;
+    }
+
+    if (currentPermission === 'default') {
+      try {
+        const nextPermission = await requestNotificationPermission();
+        setNotificationPermission(nextPermission);
+        if (nextPermission === 'granted') {
+          setReviewReminderMessage('通知が許可されました。');
+        } else {
+          setReviewReminderMessage('通知が未許可のため、リマインドは送信されません。');
+        }
+      } catch (err) {
+        setReviewReminderMessage(`通知許可の確認に失敗しました: ${toMessage(err)}`);
+      }
+      return;
+    }
+
+    if (isTauriRuntime()) {
+      try {
+        await invoke('open_notification_settings');
+        setReviewReminderMessage('OSの通知設定を開きました。許可後に画面を再表示してください。');
+      } catch (err) {
+        setReviewReminderMessage(`通知設定を開けませんでした: ${toMessage(err)}`);
+      }
+      return;
+    }
+
+    if (currentPermission === 'denied') {
+      setReviewReminderMessage('通知が拒否されています。ブラウザ設定から通知を許可してください。');
+      return;
+    }
+
+    setReviewReminderMessage('通知はすでに許可されています。');
+  }, []);
+
+  const sendTestNotification = useCallback(async () => {
+    const permission = await ensureNotificationPermissionForSend();
+    if (permission === 'unsupported') {
+      setReviewReminderMessage('この環境では通知機能を利用できません。');
+      return;
+    }
+
+    if (permission !== 'granted') {
+      setReviewReminderMessage('通知が未許可です。先に通知許可を設定してください。');
+      return;
+    }
+
+    try {
+      sendNotification({
+        title: 'GitLab Action Radar',
+        body: 'テスト通知です。通知一覧に表示されるか確認してください。'
+      });
+      setReviewReminderMessage('テスト通知を送信しました。');
+    } catch (err) {
+      setReviewReminderMessage(`テスト通知の送信に失敗しました: ${toMessage(err)}`);
+    }
+  }, [ensureNotificationPermissionForSend]);
+
   const updateTrayIndicator = useCallback(async (summary: TrayIndicatorSummary) => {
     if (!isTauriRuntime()) {
       return;
@@ -350,23 +477,20 @@ export function App() {
       return;
     }
 
-    if (typeof window === 'undefined' || !('Notification' in window)) {
+    const permission = await ensureNotificationPermissionForSend();
+    if (permission === 'unsupported') {
       setReviewReminderMessage('この環境では通知機能を利用できません。');
       return;
     }
 
+    if (permission !== 'granted') {
+      setReviewReminderMessage('通知が許可されていないため、リマインドを送信できません。');
+      return;
+    }
+
     try {
-      let permission = Notification.permission;
-      if (permission === 'default') {
-        permission = await Notification.requestPermission();
-      }
-
-      if (permission !== 'granted') {
-        setReviewReminderMessage('通知が許可されていないため、リマインドを送信できません。');
-        return;
-      }
-
-      new Notification('GitLab Action Radar', {
+      sendNotification({
+        title: 'GitLab Action Radar',
         body: `要レビュー ${counts.needsReview}件 / 作者修正待ち ${counts.waitingForAuthor}件 / 未着手 ${counts.new}件`
       });
       setReviewReminderMessage(
@@ -375,7 +499,7 @@ export function App() {
     } catch (err) {
       setReviewReminderMessage(`通知送信に失敗しました: ${toMessage(err)}`);
     }
-  }, []);
+  }, [ensureNotificationPermissionForSend]);
 
   const savePatToken = async () => {
     const token = patInput.trim();
@@ -538,18 +662,20 @@ export function App() {
   }, [autoPollingIntervalMinutes]);
 
   useEffect(() => {
-    if (!reviewReminderEnabled) {
+    if (typeof window === 'undefined') {
       return;
     }
 
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      return;
-    }
+    refreshNotificationPermission();
+    const onVisibilityChange = () => {
+      refreshNotificationPermission();
+    };
+    window.addEventListener('visibilitychange', onVisibilityChange);
 
-    if (Notification.permission === 'default') {
-      void Notification.requestPermission();
-    }
-  }, [reviewReminderEnabled]);
+    return () => {
+      window.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [refreshNotificationPermission]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -614,6 +740,11 @@ export function App() {
       window.clearInterval(intervalId);
     };
   }, [authLoading, client, loadMergeRequests, notifiedReviewReminderSlots, reviewReminderEnabled, reviewReminderTimes]);
+
+  const notificationPermissionLabel = getNotificationPermissionLabel(notificationPermission);
+  const notificationPermissionButtonLabel =
+    notificationPermission === 'default' ? '通知許可をリクエスト' : '通知設定を開く';
+  const notificationPermissionButtonDisabled = notificationPermission === 'unsupported';
 
   return (
     <main className="min-h-screen bg-radial-[at_50%_0%] from-slate-200 to-slate-100 px-4 py-6 text-slate-900">
@@ -729,6 +860,38 @@ export function App() {
                 <section className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                   <p className="text-sm font-medium text-slate-700">Review reminder</p>
                   <div className="flex flex-col gap-2">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+                      <span>通知許可:</span>
+                      <span
+                        className={
+                          notificationPermission === 'granted'
+                            ? 'font-medium text-emerald-700'
+                            : notificationPermission === 'unsupported'
+                              ? 'font-medium text-slate-500'
+                              : 'font-medium text-amber-700'
+                        }
+                      >
+                        {notificationPermissionLabel}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void openNotificationPermissionScreen()}
+                        className="h-8"
+                        disabled={notificationPermissionButtonDisabled}
+                      >
+                        {notificationPermissionButtonLabel}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => void sendTestNotification()}
+                        className="h-8"
+                        disabled={notificationPermission === 'unsupported'}
+                      >
+                        テスト通知を送信
+                      </Button>
+                    </div>
                     <label className="inline-flex items-center gap-2 text-sm text-slate-700">
                       <input
                         type="checkbox"
