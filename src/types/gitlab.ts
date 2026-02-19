@@ -37,6 +37,7 @@ export interface MergeRequestHealth {
   hasConflicts: boolean;
   hasPendingApprovals: boolean;
   isCreatedByMe: boolean;
+  latestCommitAt?: string;
   ownMrChecks?: OwnMergeRequestChecks;
   reviewerChecks?: ReviewerMergeRequestChecks;
 }

@@ -11,6 +11,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './com
 import { Input } from './components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { AssignedAlertSnapshot, AssignedAlertDiff, buildAssignedAlertSnapshot, detectAssignedAlertDiff } from './lib/assignedAlertDiff';
+import {
+  IgnoredAssignedAlertState,
+  applyIgnoredAssignedAlertsUntilNewCommit,
+  toCommitSignature
+} from './lib/ignoredAssignedAlerts';
 import { MergeRequestHealth } from './types/gitlab';
 
 const gitlabBaseUrl = import.meta.env.VITE_GITLAB_BASE_URL ?? 'https://gitlab.com';
@@ -26,6 +31,8 @@ const localStorageAutoPollingIntervalMinutesKey = 'auto-polling-interval-minutes
 const localStorageAssignedAlertSnapshotKey = 'assigned-alert-snapshot';
 const localStorageAssignedAlertSnapshotInitializedKey = 'assigned-alert-snapshot-initialized';
 const localStorageAssignedAlertSnapshotUserIdKey = 'assigned-alert-snapshot-user-id';
+const localStorageIgnoredAssignedAlertsKey = 'ignored-assigned-alerts';
+const localStorageIgnoredAssignedAlertsUserIdKey = 'ignored-assigned-alerts-user-id';
 const appSettingsStorePath = 'app-settings.json';
 const appSettingsStoreKey = 'settings';
 const defaultAutoPollingIntervalMinutes = 1;
@@ -141,7 +148,12 @@ interface AssignedAlertSnapshotEntry {
   hasFailedCi: boolean;
 }
 
-function normalizeAssignedAlertSnapshotUserId(value: unknown): number | undefined {
+interface IgnoredAssignedAlertEntry {
+  mergeRequestId: number;
+  commitSignature: string;
+}
+
+function normalizeSettingsUserId(value: unknown): number | undefined {
   if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
     return undefined;
   }
@@ -192,7 +204,7 @@ function parseAssignedAlertSnapshotUserId(value: string | null): number | undefi
   }
 
   const parsed = Number(value);
-  return normalizeAssignedAlertSnapshotUserId(parsed);
+  return normalizeSettingsUserId(parsed);
 }
 
 function restoreAssignedAlertSnapshot(entries: AssignedAlertSnapshotEntry[]): Map<number, AssignedAlertSnapshot> {
@@ -216,6 +228,71 @@ function serializeAssignedAlertSnapshotEntries(snapshot: ReadonlyMap<number, Ass
     }));
 }
 
+function normalizeIgnoredAssignedAlertEntries(rawEntries: unknown): IgnoredAssignedAlertEntry[] {
+  if (!Array.isArray(rawEntries)) {
+    return [];
+  }
+
+  const deduped = new Map<number, IgnoredAssignedAlertEntry>();
+  for (const rawEntry of rawEntries) {
+    if (typeof rawEntry !== 'object' || rawEntry === null) {
+      continue;
+    }
+
+    const entry = rawEntry as Partial<IgnoredAssignedAlertEntry>;
+    if (typeof entry.mergeRequestId !== 'number' || !Number.isInteger(entry.mergeRequestId) || entry.mergeRequestId <= 0) {
+      continue;
+    }
+
+    deduped.set(entry.mergeRequestId, {
+      mergeRequestId: entry.mergeRequestId,
+      commitSignature: typeof entry.commitSignature === 'string' ? entry.commitSignature : 'no-commit'
+    });
+  }
+
+  return [...deduped.values()].sort((left, right) => left.mergeRequestId - right.mergeRequestId);
+}
+
+function parseIgnoredAssignedAlertEntries(value: string | null): IgnoredAssignedAlertEntry[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return normalizeIgnoredAssignedAlertEntries(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
+
+function parseIgnoredAssignedAlertsUserId(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return normalizeSettingsUserId(parsed);
+}
+
+function restoreIgnoredAssignedAlerts(entries: IgnoredAssignedAlertEntry[]): Map<number, IgnoredAssignedAlertState> {
+  const state = new Map<number, IgnoredAssignedAlertState>();
+  for (const entry of entries) {
+    state.set(entry.mergeRequestId, {
+      commitSignature: entry.commitSignature
+    });
+  }
+  return state;
+}
+
+function serializeIgnoredAssignedAlerts(snapshot: ReadonlyMap<number, IgnoredAssignedAlertState>): IgnoredAssignedAlertEntry[] {
+  return [...snapshot.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([mergeRequestId, value]) => ({
+      mergeRequestId,
+      commitSignature: value.commitSignature
+    }));
+}
+
 interface AppSettingsPayload {
   reviewReminderEnabled?: boolean;
   reviewReminderTimes?: string[];
@@ -225,6 +302,8 @@ interface AppSettingsPayload {
   assignedAlertSnapshot?: AssignedAlertSnapshotEntry[];
   assignedAlertSnapshotInitialized?: boolean;
   assignedAlertSnapshotUserId?: number;
+  ignoredAssignedAlerts?: IgnoredAssignedAlertEntry[];
+  ignoredAssignedAlertsUserId?: number;
 }
 
 interface AppSettings {
@@ -236,6 +315,8 @@ interface AppSettings {
   assignedAlertSnapshot: AssignedAlertSnapshotEntry[];
   assignedAlertSnapshotInitialized: boolean;
   assignedAlertSnapshotUserId?: number;
+  ignoredAssignedAlerts: IgnoredAssignedAlertEntry[];
+  ignoredAssignedAlertsUserId?: number;
 }
 
 function serializeSettings(settings: AppSettings): string {
@@ -251,11 +332,16 @@ function normalizeAppSettings(payload: AppSettingsPayload | null | undefined): A
     payload && Array.isArray(payload.notifiedReviewReminderSlots)
       ? payload.notifiedReviewReminderSlots.filter((slot): slot is string => typeof slot === 'string')
       : [];
-  const assignedAlertSnapshotUserId = normalizeAssignedAlertSnapshotUserId(payload?.assignedAlertSnapshotUserId);
+  const assignedAlertSnapshotUserId = normalizeSettingsUserId(payload?.assignedAlertSnapshotUserId);
   const assignedAlertSnapshotInitialized = payload?.assignedAlertSnapshotInitialized === true && assignedAlertSnapshotUserId != null;
   const assignedAlertSnapshot = assignedAlertSnapshotInitialized
     ? normalizeAssignedAlertSnapshotEntries(payload?.assignedAlertSnapshot)
     : [];
+  const ignoredAssignedAlertsUserId = normalizeSettingsUserId(payload?.ignoredAssignedAlertsUserId);
+  const ignoredAssignedAlerts =
+    ignoredAssignedAlertsUserId != null
+      ? normalizeIgnoredAssignedAlertEntries(payload?.ignoredAssignedAlerts)
+      : [];
 
   return {
     reviewReminderEnabled: payload?.reviewReminderEnabled === true,
@@ -265,7 +351,9 @@ function normalizeAppSettings(payload: AppSettingsPayload | null | undefined): A
     autoPollingIntervalMinutes: normalizePollingIntervalMinutes(payload?.autoPollingIntervalMinutes ?? defaultAutoPollingIntervalMinutes),
     assignedAlertSnapshot,
     assignedAlertSnapshotInitialized,
-    assignedAlertSnapshotUserId
+    assignedAlertSnapshotUserId,
+    ignoredAssignedAlerts,
+    ignoredAssignedAlertsUserId
   };
 }
 
@@ -283,9 +371,12 @@ function loadLegacyLocalStorageSettings(): AppSettings {
   const assignedAlertSnapshotValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotKey);
   const assignedAlertSnapshotInitializedValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotInitializedKey);
   const assignedAlertSnapshotUserIdValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotUserIdKey);
+  const ignoredAssignedAlertsValue = window.localStorage.getItem(localStorageIgnoredAssignedAlertsKey);
+  const ignoredAssignedAlertsUserIdValue = window.localStorage.getItem(localStorageIgnoredAssignedAlertsUserIdKey);
   const assignedAlertSnapshotUserId = parseAssignedAlertSnapshotUserId(assignedAlertSnapshotUserIdValue);
   const assignedAlertSnapshotInitialized =
     assignedAlertSnapshotInitializedValue === 'true' && assignedAlertSnapshotUserId != null;
+  const ignoredAssignedAlertsUserId = parseIgnoredAssignedAlertsUserId(ignoredAssignedAlertsUserIdValue);
 
   return {
     reviewReminderEnabled: enabledValue === 'true',
@@ -295,7 +386,9 @@ function loadLegacyLocalStorageSettings(): AppSettings {
     autoPollingIntervalMinutes: parseAutoPollingIntervalMinutes(autoPollingIntervalMinutesValue),
     assignedAlertSnapshot: assignedAlertSnapshotInitialized ? parseAssignedAlertSnapshotEntries(assignedAlertSnapshotValue) : [],
     assignedAlertSnapshotInitialized,
-    assignedAlertSnapshotUserId
+    assignedAlertSnapshotUserId,
+    ignoredAssignedAlerts: ignoredAssignedAlertsUserId != null ? parseIgnoredAssignedAlertEntries(ignoredAssignedAlertsValue) : [],
+    ignoredAssignedAlertsUserId
   };
 }
 
@@ -310,6 +403,7 @@ function saveSettingsToLegacyLocalStorage(settings: AppSettings): void {
   window.localStorage.setItem(localStorageAutoPollingEnabledKey, String(settings.autoPollingEnabled));
   window.localStorage.setItem(localStorageAutoPollingIntervalMinutesKey, String(settings.autoPollingIntervalMinutes));
   window.localStorage.setItem(localStorageAssignedAlertSnapshotKey, JSON.stringify(settings.assignedAlertSnapshot));
+  window.localStorage.setItem(localStorageIgnoredAssignedAlertsKey, JSON.stringify(settings.ignoredAssignedAlerts));
   window.localStorage.setItem(
     localStorageAssignedAlertSnapshotInitializedKey,
     String(settings.assignedAlertSnapshotInitialized)
@@ -319,6 +413,12 @@ function saveSettingsToLegacyLocalStorage(settings: AppSettings): void {
     window.localStorage.removeItem(localStorageAssignedAlertSnapshotUserIdKey);
   } else {
     window.localStorage.setItem(localStorageAssignedAlertSnapshotUserIdKey, String(settings.assignedAlertSnapshotUserId));
+  }
+
+  if (settings.ignoredAssignedAlertsUserId == null) {
+    window.localStorage.removeItem(localStorageIgnoredAssignedAlertsUserIdKey);
+  } else {
+    window.localStorage.setItem(localStorageIgnoredAssignedAlertsUserIdKey, String(settings.ignoredAssignedAlertsUserId));
   }
 }
 
@@ -496,12 +596,16 @@ export function App() {
   const [assignedAlertSnapshotEntries, setAssignedAlertSnapshotEntries] = useState<AssignedAlertSnapshotEntry[]>([]);
   const [assignedAlertSnapshotInitialized, setAssignedAlertSnapshotInitialized] = useState(false);
   const [assignedAlertSnapshotUserId, setAssignedAlertSnapshotUserId] = useState<number | undefined>();
+  const [ignoredAssignedAlertEntries, setIgnoredAssignedAlertEntries] = useState<IgnoredAssignedAlertEntry[]>([]);
+  const [ignoredAssignedAlertsUserId, setIgnoredAssignedAlertsUserId] = useState<number | undefined>();
   const [tabNavigationRequest, setTabNavigationRequest] = useState<TabNavigationRequest | undefined>();
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const loadInFlightRef = useRef(false);
   const assignedAlertSnapshotRef = useRef<Map<number, AssignedAlertSnapshot>>(new Map());
   const assignedAlertSnapshotInitializedRef = useRef(false);
   const assignedAlertSnapshotUserIdRef = useRef<number | undefined>(undefined);
+  const ignoredAssignedAlertsRef = useRef<Map<number, IgnoredAssignedAlertState>>(new Map());
+  const ignoredAssignedAlertsUserIdRef = useRef<number | undefined>(undefined);
   const settingsStoreRef = useRef<Store | null>(null);
   const lastPersistedSettingsRef = useRef<string | null>(null);
   const getSettingsStore = useCallback(async (): Promise<Store> => {
@@ -537,6 +641,10 @@ export function App() {
 
     return new GitLabClient({ baseUrl: gitlabBaseUrl, token: patToken });
   }, [patToken]);
+  const ignoredAssignedMergeRequestIds = useMemo(
+    () => ignoredAssignedAlertEntries.map((entry) => entry.mergeRequestId),
+    [ignoredAssignedAlertEntries]
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -557,6 +665,10 @@ export function App() {
       assignedAlertSnapshotRef.current = restoreAssignedAlertSnapshot(settings.assignedAlertSnapshot);
       assignedAlertSnapshotInitializedRef.current = settings.assignedAlertSnapshotInitialized;
       assignedAlertSnapshotUserIdRef.current = settings.assignedAlertSnapshotUserId;
+      setIgnoredAssignedAlertEntries(settings.ignoredAssignedAlerts);
+      setIgnoredAssignedAlertsUserId(settings.ignoredAssignedAlertsUserId);
+      ignoredAssignedAlertsRef.current = restoreIgnoredAssignedAlerts(settings.ignoredAssignedAlerts);
+      ignoredAssignedAlertsUserIdRef.current = settings.ignoredAssignedAlertsUserId;
     };
 
     const loadSettings = async () => {
@@ -1016,9 +1128,13 @@ export function App() {
       assignedAlertSnapshotRef.current = new Map();
       assignedAlertSnapshotInitializedRef.current = false;
       assignedAlertSnapshotUserIdRef.current = undefined;
+      ignoredAssignedAlertsRef.current = new Map();
+      ignoredAssignedAlertsUserIdRef.current = undefined;
       setAssignedAlertSnapshotEntries([]);
       setAssignedAlertSnapshotInitialized(false);
       setAssignedAlertSnapshotUserId(undefined);
+      setIgnoredAssignedAlertEntries([]);
+      setIgnoredAssignedAlertsUserId(undefined);
       setAssignedItems([]);
       setReviewRequestedItems([]);
       setLoading(false);
@@ -1040,17 +1156,36 @@ export function App() {
     setError(undefined);
     try {
       const mergeRequests = await client.listMyRelevantMergeRequests();
-      const [assignedSignals, reviewRequestedSignals] = await Promise.all([
-        client.buildHealthSignals(mergeRequests.assigned, mergeRequests.currentUserId),
+      const [rawAssignedSignals, reviewRequestedSignals] = await Promise.all([
+        client.buildHealthSignals(mergeRequests.assigned, mergeRequests.currentUserId, {
+          includeLatestCommitAt: true
+        }),
         client.buildHealthSignals(mergeRequests.reviewRequested, mergeRequests.currentUserId, {
           includeReviewerChecks: true
         })
       ]);
+      const sameIgnoredAssignedAlertsUser =
+        ignoredAssignedAlertsUserIdRef.current != null && ignoredAssignedAlertsUserIdRef.current === mergeRequests.currentUserId;
+      const previousIgnoredAssignedAlerts = sameIgnoredAssignedAlertsUser
+        ? ignoredAssignedAlertsRef.current
+        : new Map<number, IgnoredAssignedAlertState>();
+      const appliedIgnoredAssignedAlerts = applyIgnoredAssignedAlertsUntilNewCommit(rawAssignedSignals, previousIgnoredAssignedAlerts);
+      const ignoredAssignedMergeRequestIds = appliedIgnoredAssignedAlerts.ignoredMergeRequestIds;
+      const actionableAssignedSignals = rawAssignedSignals.filter(
+        (item) => !ignoredAssignedMergeRequestIds.has(item.mergeRequest.id)
+      );
+      const nextIgnoredAssignedAlerts = appliedIgnoredAssignedAlerts.nextState;
+
+      ignoredAssignedAlertsRef.current = nextIgnoredAssignedAlerts;
+      ignoredAssignedAlertsUserIdRef.current = mergeRequests.currentUserId;
+      setIgnoredAssignedAlertEntries(serializeIgnoredAssignedAlerts(nextIgnoredAssignedAlerts));
+      setIgnoredAssignedAlertsUserId(mergeRequests.currentUserId);
+
       const canCompareWithPreviousSnapshot =
         assignedAlertSnapshotInitializedRef.current && assignedAlertSnapshotUserIdRef.current === mergeRequests.currentUserId;
       const previousSnapshot = canCompareWithPreviousSnapshot ? assignedAlertSnapshotRef.current : new Map<number, AssignedAlertSnapshot>();
-      const assignedAlertDiff = detectAssignedAlertDiff(previousSnapshot, assignedSignals);
-      const nextAssignedAlertSnapshot = buildAssignedAlertSnapshot(assignedSignals);
+      const assignedAlertDiff = detectAssignedAlertDiff(previousSnapshot, actionableAssignedSignals);
+      const nextAssignedAlertSnapshot = buildAssignedAlertSnapshot(actionableAssignedSignals);
       assignedAlertSnapshotRef.current = nextAssignedAlertSnapshot;
       assignedAlertSnapshotInitializedRef.current = true;
       assignedAlertSnapshotUserIdRef.current = mergeRequests.currentUserId;
@@ -1060,9 +1195,9 @@ export function App() {
       if (canCompareWithPreviousSnapshot) {
         await notifyImmediateAssignedAlerts(assignedAlertDiff);
       }
-      setAssignedItems(assignedSignals);
+      setAssignedItems(rawAssignedSignals);
       setReviewRequestedItems(reviewRequestedSignals);
-      await updateTrayIndicator(summarizeTrayIndicator(assignedSignals, reviewRequestedSignals));
+      await updateTrayIndicator(summarizeTrayIndicator(actionableAssignedSignals, reviewRequestedSignals));
 
       if (options?.notifyReviewReminder) {
         const reviewStatusCounts = summarizeReviewStatusCounts(reviewRequestedSignals);
@@ -1081,7 +1216,35 @@ export function App() {
       }
       loadInFlightRef.current = false;
     }
-  }, [client, notifyImmediateAssignedAlerts, notifyReviewReminder, updateTrayIndicator]);
+  }, [
+    client,
+    notifyImmediateAssignedAlerts,
+    notifyReviewReminder,
+    updateTrayIndicator
+  ]);
+
+  const ignoreAssignedMergeRequestUntilNewCommit = useCallback((mergeRequestId: number) => {
+    const target = assignedItems.find((item) => item.mergeRequest.id === mergeRequestId);
+    if (!target || (!target.hasConflicts && !target.hasFailedCi)) {
+      return;
+    }
+
+    const nextIgnoredAssignedAlerts = new Map(ignoredAssignedAlertsRef.current);
+    nextIgnoredAssignedAlerts.set(mergeRequestId, {
+      commitSignature: toCommitSignature(target.latestCommitAt)
+    });
+    ignoredAssignedAlertsRef.current = nextIgnoredAssignedAlerts;
+    setIgnoredAssignedAlertEntries(serializeIgnoredAssignedAlerts(nextIgnoredAssignedAlerts));
+
+    const currentUserId = assignedAlertSnapshotUserIdRef.current;
+    if (currentUserId != null) {
+      ignoredAssignedAlertsUserIdRef.current = currentUserId;
+      setIgnoredAssignedAlertsUserId(currentUserId);
+    }
+
+    const actionableAssignedItems = assignedItems.filter((item) => !nextIgnoredAssignedAlerts.has(item.mergeRequest.id));
+    void updateTrayIndicator(summarizeTrayIndicator(actionableAssignedItems, reviewRequestedItems));
+  }, [assignedItems, reviewRequestedItems, updateTrayIndicator]);
 
   useEffect(() => {
     if (authLoading) {
@@ -1121,7 +1284,9 @@ export function App() {
       autoPollingIntervalMinutes: normalizePollingIntervalMinutes(autoPollingIntervalMinutes),
       assignedAlertSnapshot: assignedAlertSnapshotEntries,
       assignedAlertSnapshotInitialized,
-      assignedAlertSnapshotUserId
+      assignedAlertSnapshotUserId,
+      ignoredAssignedAlerts: ignoredAssignedAlertEntries,
+      ignoredAssignedAlertsUserId
     };
 
     void saveAppSettings(nextSettings).catch(() => {
@@ -1133,6 +1298,8 @@ export function App() {
     assignedAlertSnapshotUserId,
     autoPollingEnabled,
     autoPollingIntervalMinutes,
+    ignoredAssignedAlertEntries,
+    ignoredAssignedAlertsUserId,
     notifiedReviewReminderSlots,
     reviewReminderEnabled,
     reviewReminderTimes,
@@ -1246,9 +1413,11 @@ export function App() {
                 <MergeRequestList
                   assignedItems={assignedItems}
                   reviewRequestedItems={reviewRequestedItems}
+                  ignoredAssignedMergeRequestIds={ignoredAssignedMergeRequestIds}
                   loading={loading}
                   error={error}
                   onOpenMergeRequest={openExternalUrl}
+                  onIgnoreAssignedUntilNewCommit={ignoreAssignedMergeRequestUntilNewCommit}
                   tabNavigationRequest={tabNavigationRequest}
                 />
               </TabsContent>

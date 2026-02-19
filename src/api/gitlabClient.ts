@@ -19,6 +19,7 @@ export interface GitLabClientConfig {
 
 export interface BuildHealthSignalsOptions {
   includeReviewerChecks?: boolean;
+  includeLatestCommitAt?: boolean;
 }
 
 export class GitLabClient {
@@ -277,7 +278,8 @@ export class GitLabClient {
 
   private async buildReviewerMergeRequestChecks(
     mergeRequest: MergeRequest,
-    currentUserId: number
+    currentUserId: number,
+    latestCommitAtInput?: string
   ): Promise<ReviewerMergeRequestChecks> {
     const notes = await this.getMergeRequestNotes(mergeRequest);
     const mrAuthorId = mergeRequest.author?.id;
@@ -301,7 +303,7 @@ export class GitLabClient {
       }
     }
 
-    const latestCommitAt = await this.getLatestCommitAt(mergeRequest);
+    const latestCommitAt = latestCommitAtInput ?? (await this.getLatestCommitAt(mergeRequest));
     const reviewStatus = this.resolveReviewStatus(reviewerLastCommentedAt, latestCommitAt, authorLastCommentedAt);
 
     return {
@@ -322,13 +324,15 @@ export class GitLabClient {
         const approvalsRequired = mergeRequest.approvals_required ?? 0;
         const approvedCount = mergeRequest.approved_by?.length ?? 0;
         const isCreatedByMe = mergeRequest.author?.id === currentUserId;
-        const [details, ownMrChecks, reviewerChecks] = await Promise.all([
+        const shouldIncludeLatestCommitAt = options?.includeLatestCommitAt || options?.includeReviewerChecks;
+        const [details, ownMrChecks, latestCommitAt] = await Promise.all([
           this.getMergeRequestDetails(mergeRequest),
           isCreatedByMe ? this.buildOwnMergeRequestChecks(mergeRequest) : Promise.resolve(undefined),
-          options?.includeReviewerChecks
-            ? this.buildReviewerMergeRequestChecks(mergeRequest, currentUserId)
-            : Promise.resolve(undefined)
+          shouldIncludeLatestCommitAt ? this.getLatestCommitAt(mergeRequest) : Promise.resolve(undefined)
         ]);
+        const reviewerChecks = options?.includeReviewerChecks
+          ? await this.buildReviewerMergeRequestChecks(mergeRequest, currentUserId, latestCommitAt)
+          : undefined;
         const normalizedCiStatus = ownMrChecks
           ? ownMrChecks.isCiFailed
             ? 'failed'
@@ -343,6 +347,7 @@ export class GitLabClient {
           hasConflicts: this.hasMergeConflict(mergeRequest, details),
           hasPendingApprovals: approvalsRequired > approvedCount,
           isCreatedByMe,
+          latestCommitAt,
           ownMrChecks,
           reviewerChecks
         };

@@ -31,9 +31,11 @@ pnpm test
   - 自分のレビュー待ち: 青
 - 対応が必要な MR の合計件数をトレイタイトルに表示します（0件時は非表示）。
 - Settings の `Auto polling` から定期更新を設定できます（既定 1 分、1〜60 分）。
+- `Assigned` タブは `競合 / CI失敗 / 承認待ち / My MR` で絞り込みできます。
+- `Assigned` の各MRにある `新しいコミットまで無視` で、選択したMRのみ同一コミット中は `Ignored until new commit` 表示になります。
 - 自分にアサインされたMRで新規に `競合` または `CI失敗` が発生したとき、次回ポーリングで即時OS通知します（初回ロードは通知しません）。
 - 即時通知の差分判定スナップショットは設定ストアに保存され、再起動後も引き継がれます。
-- `Auto polling` / `Review reminder` の設定は `tauri-plugin-store`（`app-settings.json`）に保存され、再起動後も保持されます。
+- `Auto polling` / `Review reminder` と、無視対象MRの状態は `tauri-plugin-store`（`app-settings.json`）に保存され、再起動後も保持されます。
 
 ## 認証
 - PAT のみ対応

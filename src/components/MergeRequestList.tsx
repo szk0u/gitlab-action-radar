@@ -9,14 +9,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 interface MergeRequestListProps {
   assignedItems: MergeRequestHealth[];
   reviewRequestedItems: MergeRequestHealth[];
+  ignoredAssignedMergeRequestIds?: number[];
   loading?: boolean;
   error?: string;
   onOpenMergeRequest?: (url: string) => void | Promise<void>;
+  onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void;
   tabNavigationRequest?: TabNavigationRequest;
 }
 
 export type TabKey = 'assigned' | 'review';
 type ReviewStatusFilter = ReviewerReviewStatus | 'all';
+type AssignedStatusFilter = 'all' | 'conflicts' | 'failed_ci' | 'pending_approvals' | 'my_mr';
 interface TabNavigationRequest {
   tab: TabKey;
   nonce: number;
@@ -98,6 +101,13 @@ interface ReviewerStatusCounts {
   new: number;
 }
 
+interface AssignedStatusCounts {
+  conflicts: number;
+  failedCi: number;
+  pendingApprovals: number;
+  myMr: number;
+}
+
 function getReviewStatus(item: MergeRequestHealth): ReviewerReviewStatus {
   return item.reviewerChecks?.reviewStatus ?? 'new';
 }
@@ -156,6 +166,48 @@ function summarizeReviewerStatuses(items: MergeRequestHealth[]): ReviewerStatusC
   return result;
 }
 
+function summarizeAssignedStatuses(items: MergeRequestHealth[]): AssignedStatusCounts {
+  const result: AssignedStatusCounts = {
+    conflicts: 0,
+    failedCi: 0,
+    pendingApprovals: 0,
+    myMr: 0
+  };
+
+  for (const item of items) {
+    if (item.hasConflicts) {
+      result.conflicts += 1;
+    }
+    if (item.hasFailedCi) {
+      result.failedCi += 1;
+    }
+    if (item.hasPendingApprovals) {
+      result.pendingApprovals += 1;
+    }
+    if (item.isCreatedByMe) {
+      result.myMr += 1;
+    }
+  }
+
+  return result;
+}
+
+function matchesAssignedStatusFilter(item: MergeRequestHealth, filter: AssignedStatusFilter): boolean {
+  if (filter === 'all') {
+    return true;
+  }
+  if (filter === 'conflicts') {
+    return item.hasConflicts;
+  }
+  if (filter === 'failed_ci') {
+    return item.hasFailedCi;
+  }
+  if (filter === 'pending_approvals') {
+    return item.hasPendingApprovals;
+  }
+  return item.isCreatedByMe;
+}
+
 function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
   if (tabKey !== 'review' || !item.reviewerChecks) {
     return null;
@@ -193,10 +245,13 @@ function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
 function renderMergeRequestItem(
   item: MergeRequestHealth,
   tabKey: TabKey,
-  onOpenMergeRequest?: (url: string) => void | Promise<void>
+  isIgnoredAssignedUntilNewCommit: boolean,
+  onOpenMergeRequest?: (url: string) => void | Promise<void>,
+  onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void
 ) {
   const { mergeRequest, hasFailedCi, hasConflicts, hasPendingApprovals } = item;
   const isAtRisk = hasFailedCi || hasConflicts || hasPendingApprovals;
+  const canIgnoreUntilNewCommit = tabKey === 'assigned' && (hasConflicts || hasFailedCi) && !!onIgnoreAssignedUntilNewCommit;
 
   return (
     <li key={mergeRequest.id}>
@@ -236,8 +291,23 @@ function renderMergeRequestItem(
               {hasConflicts ? 'Conflicts' : 'No conflicts'}
             </Badge>
             {hasPendingApprovals && <Badge variant="secondary">Pending approvals</Badge>}
+            {isIgnoredAssignedUntilNewCommit && <Badge variant="secondary">Ignored until new commit</Badge>}
             {!isAtRisk && <Badge variant="outline">Healthy</Badge>}
           </div>
+          {canIgnoreUntilNewCommit && (
+            <div className="mt-3 border-t border-slate-200 pt-3">
+              <button
+                type="button"
+                onClick={() => onIgnoreAssignedUntilNewCommit?.(mergeRequest.id)}
+                className={cn(
+                  badgeVariants({ variant: 'secondary' }),
+                  'cursor-pointer text-xs transition-opacity hover:opacity-90'
+                )}
+              >
+                {isIgnoredAssignedUntilNewCommit ? '無視中（新コミットで解除）' : '新しいコミットまで無視'}
+              </button>
+            </div>
+          )}
           {renderOwnMergeRequestChecks(item)}
           {renderReviewerChecks(item, tabKey)}
         </CardContent>
@@ -250,7 +320,9 @@ function renderList(
   items: MergeRequestHealth[],
   emptyMessage: string,
   tabKey: TabKey,
-  onOpenMergeRequest?: (url: string) => void | Promise<void>
+  ignoredAssignedMergeRequestIdSet: ReadonlySet<number>,
+  onOpenMergeRequest?: (url: string) => void | Promise<void>,
+  onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void
 ) {
   if (items.length === 0) {
     return (
@@ -262,7 +334,15 @@ function renderList(
 
   return (
     <ul className="m-0 flex list-none flex-col gap-3 p-0">
-      {items.map((item) => renderMergeRequestItem(item, tabKey, onOpenMergeRequest))}
+      {items.map((item) =>
+        renderMergeRequestItem(
+          item,
+          tabKey,
+          tabKey === 'assigned' && ignoredAssignedMergeRequestIdSet.has(item.mergeRequest.id),
+          onOpenMergeRequest,
+          onIgnoreAssignedUntilNewCommit
+        )
+      )}
     </ul>
   );
 }
@@ -270,13 +350,40 @@ function renderList(
 export function MergeRequestList({
   assignedItems,
   reviewRequestedItems,
+  ignoredAssignedMergeRequestIds,
   loading,
   error,
   onOpenMergeRequest,
+  onIgnoreAssignedUntilNewCommit,
   tabNavigationRequest
 }: MergeRequestListProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('assigned');
+  const [assignedStatusFilter, setAssignedStatusFilter] = useState<AssignedStatusFilter>('all');
   const [reviewStatusFilter, setReviewStatusFilter] = useState<ReviewStatusFilter>('all');
+  const ignoredAssignedMergeRequestIdSet = useMemo(
+    () => new Set(ignoredAssignedMergeRequestIds ?? []),
+    [ignoredAssignedMergeRequestIds]
+  );
+  const filteredAssignedItems = useMemo(
+    () => assignedItems.filter((item) => matchesAssignedStatusFilter(item, assignedStatusFilter)),
+    [assignedItems, assignedStatusFilter]
+  );
+  const assignedStatusCounts = useMemo(() => summarizeAssignedStatuses(assignedItems), [assignedItems]);
+  const assignedListEmptyMessage = useMemo(() => {
+    if (assignedStatusFilter === 'conflicts') {
+      return 'No assigned merge requests in 競合.';
+    }
+    if (assignedStatusFilter === 'failed_ci') {
+      return 'No assigned merge requests in CI失敗.';
+    }
+    if (assignedStatusFilter === 'pending_approvals') {
+      return 'No assigned merge requests in 承認待ち.';
+    }
+    if (assignedStatusFilter === 'my_mr') {
+      return 'No assigned merge requests in My MR.';
+    }
+    return 'No assigned merge requests.';
+  }, [assignedStatusFilter]);
   const sortedReviewRequestedItems = useMemo(
     () => sortReviewRequestedItems(reviewRequestedItems),
     [reviewRequestedItems]
@@ -306,6 +413,9 @@ export function MergeRequestList({
 
   const toggleReviewStatusFilter = (status: ReviewerReviewStatus) => {
     setReviewStatusFilter((current) => (current === status ? 'all' : status));
+  };
+  const toggleAssignedStatusFilter = (status: Exclude<AssignedStatusFilter, 'all'>) => {
+    setAssignedStatusFilter((current) => (current === status ? 'all' : status));
   };
 
   useEffect(() => {
@@ -361,7 +471,68 @@ export function MergeRequestList({
         <TabsTrigger value="review">Review requested ({reviewRequestedItems.length})</TabsTrigger>
       </TabsList>
       <TabsContent value="assigned">
-        {renderList(assignedItems, 'No assigned merge requests.', 'assigned', onOpenMergeRequest)}
+        <div className="space-y-3">
+          <Card>
+            <CardContent className="flex flex-wrap gap-2 pt-4 text-xs text-slate-600">
+              <button
+                type="button"
+                aria-pressed={assignedStatusFilter === 'conflicts'}
+                className={cn(
+                  badgeVariants({ variant: 'warning' }),
+                  'cursor-pointer transition-opacity',
+                  assignedStatusFilter === 'conflicts' ? 'ring-2 ring-amber-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+                )}
+                onClick={() => toggleAssignedStatusFilter('conflicts')}
+              >
+                競合 {assignedStatusCounts.conflicts}
+              </button>
+              <button
+                type="button"
+                aria-pressed={assignedStatusFilter === 'failed_ci'}
+                className={cn(
+                  badgeVariants({ variant: 'destructive' }),
+                  'cursor-pointer transition-opacity',
+                  assignedStatusFilter === 'failed_ci' ? 'ring-2 ring-red-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+                )}
+                onClick={() => toggleAssignedStatusFilter('failed_ci')}
+              >
+                CI失敗 {assignedStatusCounts.failedCi}
+              </button>
+              <button
+                type="button"
+                aria-pressed={assignedStatusFilter === 'pending_approvals'}
+                className={cn(
+                  badgeVariants({ variant: 'secondary' }),
+                  'cursor-pointer transition-opacity',
+                  assignedStatusFilter === 'pending_approvals' ? 'ring-2 ring-slate-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+                )}
+                onClick={() => toggleAssignedStatusFilter('pending_approvals')}
+              >
+                承認待ち {assignedStatusCounts.pendingApprovals}
+              </button>
+              <button
+                type="button"
+                aria-pressed={assignedStatusFilter === 'my_mr'}
+                className={cn(
+                  badgeVariants({ variant: 'outline' }),
+                  'cursor-pointer transition-opacity',
+                  assignedStatusFilter === 'my_mr' ? 'ring-2 ring-slate-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+                )}
+                onClick={() => toggleAssignedStatusFilter('my_mr')}
+              >
+                My MR {assignedStatusCounts.myMr}
+              </button>
+            </CardContent>
+          </Card>
+          {renderList(
+            filteredAssignedItems,
+            assignedListEmptyMessage,
+            'assigned',
+            ignoredAssignedMergeRequestIdSet,
+            onOpenMergeRequest,
+            onIgnoreAssignedUntilNewCommit
+          )}
+        </div>
       </TabsContent>
       <TabsContent value="review" className="space-y-3">
         <Card>
@@ -404,7 +575,14 @@ export function MergeRequestList({
             </button>
           </CardContent>
         </Card>
-        {renderList(filteredReviewRequestedItems, reviewListEmptyMessage, 'review', onOpenMergeRequest)}
+        {renderList(
+          filteredReviewRequestedItems,
+          reviewListEmptyMessage,
+          'review',
+          ignoredAssignedMergeRequestIdSet,
+          onOpenMergeRequest,
+          onIgnoreAssignedUntilNewCommit
+        )}
       </TabsContent>
     </Tabs>
   );
