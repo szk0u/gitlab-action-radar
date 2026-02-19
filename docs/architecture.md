@@ -49,6 +49,6 @@
 
 ## 5. 拡張案
 - 定期ポーリング（例: 60秒）
-- 通知（CI failure のみ通知）
+- 新規アラート通知（担当MRで新規の競合 / CI失敗を検知した場合に通知）
 - Approval API連携でより正確な pending approvals 判定
 - セキュア保存（OS keychain）

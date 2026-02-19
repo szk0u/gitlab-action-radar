@@ -9,6 +9,7 @@ import { Button } from './components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 import { Input } from './components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
+import { AssignedAlertSnapshot, AssignedAlertDiff, buildAssignedAlertSnapshot, detectAssignedAlertDiff } from './lib/assignedAlertDiff';
 import { MergeRequestHealth } from './types/gitlab';
 
 const gitlabBaseUrl = import.meta.env.VITE_GITLAB_BASE_URL ?? 'https://gitlab.com';
@@ -21,10 +22,13 @@ const localStorageReviewReminderLegacyTimeKey = 'review-reminder-time';
 const localStorageReviewReminderNotifiedSlotsKey = 'review-reminder-notified-slots';
 const localStorageAutoPollingEnabledKey = 'auto-polling-enabled';
 const localStorageAutoPollingIntervalMinutesKey = 'auto-polling-interval-minutes';
+const localStorageAssignedAlertSnapshotKey = 'assigned-alert-snapshot';
+const localStorageAssignedAlertSnapshotInitializedKey = 'assigned-alert-snapshot-initialized';
+const localStorageAssignedAlertSnapshotUserIdKey = 'assigned-alert-snapshot-user-id';
 const appSettingsStorePath = 'app-settings.json';
 const appSettingsStoreKey = 'settings';
-const defaultAutoPollingIntervalMinutes = 5;
-const minAutoPollingIntervalMinutes = 3;
+const defaultAutoPollingIntervalMinutes = 1;
+const minAutoPollingIntervalMinutes = 1;
 const maxAutoPollingIntervalMinutes = 60;
 
 function toMessage(error: unknown): string {
@@ -129,12 +133,96 @@ function parseAutoPollingIntervalMinutes(value: string | null): number {
   return normalizePollingIntervalMinutes(parsed);
 }
 
+interface AssignedAlertSnapshotEntry {
+  mergeRequestId: number;
+  hasConflicts: boolean;
+  hasFailedCi: boolean;
+}
+
+function normalizeAssignedAlertSnapshotUserId(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    return undefined;
+  }
+  return value;
+}
+
+function normalizeAssignedAlertSnapshotEntries(rawEntries: unknown): AssignedAlertSnapshotEntry[] {
+  if (!Array.isArray(rawEntries)) {
+    return [];
+  }
+
+  const deduped = new Map<number, AssignedAlertSnapshotEntry>();
+  for (const rawEntry of rawEntries) {
+    if (typeof rawEntry !== 'object' || rawEntry === null) {
+      continue;
+    }
+
+    const entry = rawEntry as Partial<AssignedAlertSnapshotEntry>;
+    if (typeof entry.mergeRequestId !== 'number' || !Number.isInteger(entry.mergeRequestId) || entry.mergeRequestId <= 0) {
+      continue;
+    }
+
+    deduped.set(entry.mergeRequestId, {
+      mergeRequestId: entry.mergeRequestId,
+      hasConflicts: entry.hasConflicts === true,
+      hasFailedCi: entry.hasFailedCi === true
+    });
+  }
+
+  return [...deduped.values()].sort((left, right) => left.mergeRequestId - right.mergeRequestId);
+}
+
+function parseAssignedAlertSnapshotEntries(value: string | null): AssignedAlertSnapshotEntry[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    return normalizeAssignedAlertSnapshotEntries(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
+
+function parseAssignedAlertSnapshotUserId(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+  return normalizeAssignedAlertSnapshotUserId(parsed);
+}
+
+function restoreAssignedAlertSnapshot(entries: AssignedAlertSnapshotEntry[]): Map<number, AssignedAlertSnapshot> {
+  const snapshot = new Map<number, AssignedAlertSnapshot>();
+  for (const entry of entries) {
+    snapshot.set(entry.mergeRequestId, {
+      hasConflicts: entry.hasConflicts,
+      hasFailedCi: entry.hasFailedCi
+    });
+  }
+  return snapshot;
+}
+
+function serializeAssignedAlertSnapshotEntries(snapshot: ReadonlyMap<number, AssignedAlertSnapshot>): AssignedAlertSnapshotEntry[] {
+  return [...snapshot.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([mergeRequestId, value]) => ({
+      mergeRequestId,
+      hasConflicts: value.hasConflicts,
+      hasFailedCi: value.hasFailedCi
+    }));
+}
+
 interface AppSettingsPayload {
   reviewReminderEnabled?: boolean;
   reviewReminderTimes?: string[];
   notifiedReviewReminderSlots?: string[];
   autoPollingEnabled?: boolean;
   autoPollingIntervalMinutes?: number;
+  assignedAlertSnapshot?: AssignedAlertSnapshotEntry[];
+  assignedAlertSnapshotInitialized?: boolean;
+  assignedAlertSnapshotUserId?: number;
 }
 
 interface AppSettings {
@@ -143,6 +231,9 @@ interface AppSettings {
   notifiedReviewReminderSlots: string[];
   autoPollingEnabled: boolean;
   autoPollingIntervalMinutes: number;
+  assignedAlertSnapshot: AssignedAlertSnapshotEntry[];
+  assignedAlertSnapshotInitialized: boolean;
+  assignedAlertSnapshotUserId?: number;
 }
 
 function serializeSettings(settings: AppSettings): string {
@@ -158,13 +249,21 @@ function normalizeAppSettings(payload: AppSettingsPayload | null | undefined): A
     payload && Array.isArray(payload.notifiedReviewReminderSlots)
       ? payload.notifiedReviewReminderSlots.filter((slot): slot is string => typeof slot === 'string')
       : [];
+  const assignedAlertSnapshotUserId = normalizeAssignedAlertSnapshotUserId(payload?.assignedAlertSnapshotUserId);
+  const assignedAlertSnapshotInitialized = payload?.assignedAlertSnapshotInitialized === true && assignedAlertSnapshotUserId != null;
+  const assignedAlertSnapshot = assignedAlertSnapshotInitialized
+    ? normalizeAssignedAlertSnapshotEntries(payload?.assignedAlertSnapshot)
+    : [];
 
   return {
     reviewReminderEnabled: payload?.reviewReminderEnabled === true,
     reviewReminderTimes: times,
     notifiedReviewReminderSlots: notifiedSlots,
     autoPollingEnabled: payload?.autoPollingEnabled == null ? true : payload.autoPollingEnabled === true,
-    autoPollingIntervalMinutes: normalizePollingIntervalMinutes(payload?.autoPollingIntervalMinutes ?? defaultAutoPollingIntervalMinutes)
+    autoPollingIntervalMinutes: normalizePollingIntervalMinutes(payload?.autoPollingIntervalMinutes ?? defaultAutoPollingIntervalMinutes),
+    assignedAlertSnapshot,
+    assignedAlertSnapshotInitialized,
+    assignedAlertSnapshotUserId
   };
 }
 
@@ -179,13 +278,22 @@ function loadLegacyLocalStorageSettings(): AppSettings {
   const notifiedSlotsValue = window.localStorage.getItem(localStorageReviewReminderNotifiedSlotsKey);
   const autoPollingEnabledValue = window.localStorage.getItem(localStorageAutoPollingEnabledKey);
   const autoPollingIntervalMinutesValue = window.localStorage.getItem(localStorageAutoPollingIntervalMinutesKey);
+  const assignedAlertSnapshotValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotKey);
+  const assignedAlertSnapshotInitializedValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotInitializedKey);
+  const assignedAlertSnapshotUserIdValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotUserIdKey);
+  const assignedAlertSnapshotUserId = parseAssignedAlertSnapshotUserId(assignedAlertSnapshotUserIdValue);
+  const assignedAlertSnapshotInitialized =
+    assignedAlertSnapshotInitializedValue === 'true' && assignedAlertSnapshotUserId != null;
 
   return {
     reviewReminderEnabled: enabledValue === 'true',
     reviewReminderTimes: resolveInitialReminderTimes(timesValue, legacyTimeValue),
     notifiedReviewReminderSlots: parseNotifiedSlots(notifiedSlotsValue),
     autoPollingEnabled: autoPollingEnabledValue == null ? true : autoPollingEnabledValue === 'true',
-    autoPollingIntervalMinutes: parseAutoPollingIntervalMinutes(autoPollingIntervalMinutesValue)
+    autoPollingIntervalMinutes: parseAutoPollingIntervalMinutes(autoPollingIntervalMinutesValue),
+    assignedAlertSnapshot: assignedAlertSnapshotInitialized ? parseAssignedAlertSnapshotEntries(assignedAlertSnapshotValue) : [],
+    assignedAlertSnapshotInitialized,
+    assignedAlertSnapshotUserId
   };
 }
 
@@ -199,6 +307,17 @@ function saveSettingsToLegacyLocalStorage(settings: AppSettings): void {
   window.localStorage.setItem(localStorageReviewReminderNotifiedSlotsKey, JSON.stringify(settings.notifiedReviewReminderSlots));
   window.localStorage.setItem(localStorageAutoPollingEnabledKey, String(settings.autoPollingEnabled));
   window.localStorage.setItem(localStorageAutoPollingIntervalMinutesKey, String(settings.autoPollingIntervalMinutes));
+  window.localStorage.setItem(localStorageAssignedAlertSnapshotKey, JSON.stringify(settings.assignedAlertSnapshot));
+  window.localStorage.setItem(
+    localStorageAssignedAlertSnapshotInitializedKey,
+    String(settings.assignedAlertSnapshotInitialized)
+  );
+
+  if (settings.assignedAlertSnapshotUserId == null) {
+    window.localStorage.removeItem(localStorageAssignedAlertSnapshotUserIdKey);
+  } else {
+    window.localStorage.setItem(localStorageAssignedAlertSnapshotUserIdKey, String(settings.assignedAlertSnapshotUserId));
+  }
 }
 
 interface ReviewStatusCounts {
@@ -314,6 +433,39 @@ function summarizeTrayIndicator(
   };
 }
 
+function getMergeRequestLabel(item: MergeRequestHealth): string {
+  const reference = item.mergeRequest.references?.full?.trim();
+  if (reference) {
+    return reference;
+  }
+  return `!${item.mergeRequest.iid}`;
+}
+
+function buildImmediateAlertNotificationBody(diff: AssignedAlertDiff): string {
+  const segments: string[] = [];
+  if (diff.newlyConflicted.length > 0) {
+    segments.push(`新規競合 ${diff.newlyConflicted.length}件`);
+  }
+  if (diff.newlyFailedCi.length > 0) {
+    segments.push(`新規CI失敗 ${diff.newlyFailedCi.length}件`);
+  }
+
+  const labelSet = new Set<string>();
+  for (const item of diff.newlyConflicted) {
+    labelSet.add(getMergeRequestLabel(item));
+  }
+  for (const item of diff.newlyFailedCi) {
+    labelSet.add(getMergeRequestLabel(item));
+  }
+
+  const labels = [...labelSet];
+  const previewLabels = labels.slice(0, 3);
+  const restCount = labels.length - previewLabels.length;
+  const detail = previewLabels.join(', ');
+  const restSuffix = restCount > 0 ? ` ほか${restCount}件` : '';
+  return `${segments.join(' / ')}${detail ? ` (${detail}${restSuffix})` : ''}`;
+}
+
 export function App() {
   const [patToken, setPatToken] = useState<string>(gitlabTokenFromEnv);
   const [patInput, setPatInput] = useState<string>('');
@@ -334,8 +486,14 @@ export function App() {
   );
   const [autoPollingEnabled, setAutoPollingEnabled] = useState(true);
   const [autoPollingIntervalMinutes, setAutoPollingIntervalMinutes] = useState(defaultAutoPollingIntervalMinutes);
+  const [assignedAlertSnapshotEntries, setAssignedAlertSnapshotEntries] = useState<AssignedAlertSnapshotEntry[]>([]);
+  const [assignedAlertSnapshotInitialized, setAssignedAlertSnapshotInitialized] = useState(false);
+  const [assignedAlertSnapshotUserId, setAssignedAlertSnapshotUserId] = useState<number | undefined>();
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const loadInFlightRef = useRef(false);
+  const assignedAlertSnapshotRef = useRef<Map<number, AssignedAlertSnapshot>>(new Map());
+  const assignedAlertSnapshotInitializedRef = useRef(false);
+  const assignedAlertSnapshotUserIdRef = useRef<number | undefined>(undefined);
   const settingsStoreRef = useRef<Store | null>(null);
   const lastPersistedSettingsRef = useRef<string | null>(null);
   const getSettingsStore = useCallback(async (): Promise<Store> => {
@@ -385,6 +543,12 @@ export function App() {
       setNotifiedReviewReminderSlots(settings.notifiedReviewReminderSlots);
       setAutoPollingEnabled(settings.autoPollingEnabled);
       setAutoPollingIntervalMinutes(settings.autoPollingIntervalMinutes);
+      setAssignedAlertSnapshotEntries(settings.assignedAlertSnapshot);
+      setAssignedAlertSnapshotInitialized(settings.assignedAlertSnapshotInitialized);
+      setAssignedAlertSnapshotUserId(settings.assignedAlertSnapshotUserId);
+      assignedAlertSnapshotRef.current = restoreAssignedAlertSnapshot(settings.assignedAlertSnapshot);
+      assignedAlertSnapshotInitializedRef.current = settings.assignedAlertSnapshotInitialized;
+      assignedAlertSnapshotUserIdRef.current = settings.assignedAlertSnapshotUserId;
     };
 
     const loadSettings = async () => {
@@ -641,6 +805,26 @@ export function App() {
     }
   }, [ensureNotificationPermissionForSend]);
 
+  const notifyImmediateAssignedAlerts = useCallback(async (diff: AssignedAlertDiff) => {
+    if (diff.newlyConflicted.length === 0 && diff.newlyFailedCi.length === 0) {
+      return;
+    }
+
+    const permission = await ensureNotificationPermissionForSend();
+    if (permission !== 'granted') {
+      return;
+    }
+
+    try {
+      sendNotification({
+        title: 'GitLab Action Radar',
+        body: buildImmediateAlertNotificationBody(diff)
+      });
+    } catch (err) {
+      setReviewReminderMessage(`即時通知の送信に失敗しました: ${toMessage(err)}`);
+    }
+  }, [ensureNotificationPermissionForSend]);
+
   const savePatToken = async () => {
     const token = patInput.trim();
     if (!token) {
@@ -691,6 +875,12 @@ export function App() {
     }
 
     if (!client) {
+      assignedAlertSnapshotRef.current = new Map();
+      assignedAlertSnapshotInitializedRef.current = false;
+      assignedAlertSnapshotUserIdRef.current = undefined;
+      setAssignedAlertSnapshotEntries([]);
+      setAssignedAlertSnapshotInitialized(false);
+      setAssignedAlertSnapshotUserId(undefined);
       setAssignedItems([]);
       setReviewRequestedItems([]);
       setLoading(false);
@@ -718,6 +908,20 @@ export function App() {
           includeReviewerChecks: true
         })
       ]);
+      const canCompareWithPreviousSnapshot =
+        assignedAlertSnapshotInitializedRef.current && assignedAlertSnapshotUserIdRef.current === mergeRequests.currentUserId;
+      const previousSnapshot = canCompareWithPreviousSnapshot ? assignedAlertSnapshotRef.current : new Map<number, AssignedAlertSnapshot>();
+      const assignedAlertDiff = detectAssignedAlertDiff(previousSnapshot, assignedSignals);
+      const nextAssignedAlertSnapshot = buildAssignedAlertSnapshot(assignedSignals);
+      assignedAlertSnapshotRef.current = nextAssignedAlertSnapshot;
+      assignedAlertSnapshotInitializedRef.current = true;
+      assignedAlertSnapshotUserIdRef.current = mergeRequests.currentUserId;
+      setAssignedAlertSnapshotEntries(serializeAssignedAlertSnapshotEntries(nextAssignedAlertSnapshot));
+      setAssignedAlertSnapshotInitialized(true);
+      setAssignedAlertSnapshotUserId(mergeRequests.currentUserId);
+      if (canCompareWithPreviousSnapshot) {
+        await notifyImmediateAssignedAlerts(assignedAlertDiff);
+      }
       setAssignedItems(assignedSignals);
       setReviewRequestedItems(reviewRequestedSignals);
       await updateTrayIndicator(summarizeTrayIndicator(assignedSignals, reviewRequestedSignals));
@@ -739,7 +943,7 @@ export function App() {
       }
       loadInFlightRef.current = false;
     }
-  }, [client, notifyReviewReminder, updateTrayIndicator]);
+  }, [client, notifyImmediateAssignedAlerts, notifyReviewReminder, updateTrayIndicator]);
 
   useEffect(() => {
     if (authLoading) {
@@ -776,13 +980,19 @@ export function App() {
       reviewReminderTimes: normalizeReminderTimes(reviewReminderTimes),
       notifiedReviewReminderSlots,
       autoPollingEnabled,
-      autoPollingIntervalMinutes: normalizePollingIntervalMinutes(autoPollingIntervalMinutes)
+      autoPollingIntervalMinutes: normalizePollingIntervalMinutes(autoPollingIntervalMinutes),
+      assignedAlertSnapshot: assignedAlertSnapshotEntries,
+      assignedAlertSnapshotInitialized,
+      assignedAlertSnapshotUserId
     };
 
     void saveAppSettings(nextSettings).catch(() => {
       // Ignore settings save failure and keep the current in-memory state.
     });
   }, [
+    assignedAlertSnapshotEntries,
+    assignedAlertSnapshotInitialized,
+    assignedAlertSnapshotUserId,
     autoPollingEnabled,
     autoPollingIntervalMinutes,
     notifiedReviewReminderSlots,
