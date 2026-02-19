@@ -12,10 +12,15 @@ interface MergeRequestListProps {
   loading?: boolean;
   error?: string;
   onOpenMergeRequest?: (url: string) => void | Promise<void>;
+  tabNavigationRequest?: TabNavigationRequest;
 }
 
-type TabKey = 'assigned' | 'review';
+export type TabKey = 'assigned' | 'review';
 type ReviewStatusFilter = ReviewerReviewStatus | 'all';
+interface TabNavigationRequest {
+  tab: TabKey;
+  nonce: number;
+}
 
 function getProjectLabel(mergeRequest: MergeRequest): string {
   const ref = mergeRequest.references?.full;
@@ -267,7 +272,8 @@ export function MergeRequestList({
   reviewRequestedItems,
   loading,
   error,
-  onOpenMergeRequest
+  onOpenMergeRequest,
+  tabNavigationRequest
 }: MergeRequestListProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('assigned');
   const [reviewStatusFilter, setReviewStatusFilter] = useState<ReviewStatusFilter>('all');
@@ -310,6 +316,13 @@ export function MergeRequestList({
       setActiveTab('assigned');
     }
   }, [assignedItems.length, reviewRequestedItems.length]);
+
+  useEffect(() => {
+    if (!tabNavigationRequest) {
+      return;
+    }
+    setActiveTab(tabNavigationRequest.tab);
+  }, [tabNavigationRequest]);
 
   if (loading) {
     return (

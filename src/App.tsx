@@ -1,10 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { requestPermission as requestNotificationPermissionApi, sendNotification } from '@tauri-apps/plugin-notification';
 import { Store } from '@tauri-apps/plugin-store';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GitLabClient } from './api/gitlabClient';
-import { MergeRequestList } from './components/MergeRequestList';
+import { MergeRequestList, type TabKey } from './components/MergeRequestList';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 import { Input } from './components/ui/input';
@@ -30,6 +31,7 @@ const appSettingsStoreKey = 'settings';
 const defaultAutoPollingIntervalMinutes = 1;
 const minAutoPollingIntervalMinutes = 1;
 const maxAutoPollingIntervalMinutes = 60;
+const notificationOpenTabEventName = 'notification-open-tab';
 
 function toMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -335,6 +337,10 @@ interface TrayIndicatorSummary {
 }
 
 type NotificationPermissionState = NotificationPermission | 'unsupported';
+interface TabNavigationRequest {
+  tab: TabKey;
+  nonce: number;
+}
 
 function normalizeNotificationPermissionState(value: string): NotificationPermissionState {
   if (value === 'granted' || value === 'denied' || value === 'default') {
@@ -467,6 +473,7 @@ function buildImmediateAlertNotificationBody(diff: AssignedAlertDiff): string {
 }
 
 export function App() {
+  const [activeMainTab, setActiveMainTab] = useState<'radar' | 'settings'>('radar');
   const [patToken, setPatToken] = useState<string>(gitlabTokenFromEnv);
   const [patInput, setPatInput] = useState<string>('');
   const [hasSavedPatToken, setHasSavedPatToken] = useState<boolean>(false);
@@ -489,6 +496,7 @@ export function App() {
   const [assignedAlertSnapshotEntries, setAssignedAlertSnapshotEntries] = useState<AssignedAlertSnapshotEntry[]>([]);
   const [assignedAlertSnapshotInitialized, setAssignedAlertSnapshotInitialized] = useState(false);
   const [assignedAlertSnapshotUserId, setAssignedAlertSnapshotUserId] = useState<number | undefined>();
+  const [tabNavigationRequest, setTabNavigationRequest] = useState<TabNavigationRequest | undefined>();
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const loadInFlightRef = useRef(false);
   const assignedAlertSnapshotRef = useRef<Map<number, AssignedAlertSnapshot>>(new Map());
@@ -659,6 +667,44 @@ export function App() {
     }
   }, []);
 
+  const scrollToTop = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const scroll = () => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    scroll();
+    window.requestAnimationFrame(scroll);
+  }, []);
+
+  const requestTabNavigation = useCallback((tab: TabKey) => {
+    setActiveMainTab('radar');
+    setTabNavigationRequest((previous) => ({
+      tab,
+      nonce: (previous?.nonce ?? 0) + 1
+    }));
+    scrollToTop();
+  }, [scrollToTop]);
+
+  const consumePendingNotificationTab = useCallback(async () => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    try {
+      const tab = await invoke<string | null>('take_pending_notification_tab');
+      if (tab === 'assigned' || tab === 'review') {
+        requestTabNavigation(tab);
+      }
+    } catch {
+      // Ignore command failures and rely on event delivery.
+    }
+  }, [requestTabNavigation]);
+
   const openPatIssuePage = () => {
     void openExternalUrl(gitlabPatIssueUrl);
   };
@@ -723,6 +769,96 @@ export function App() {
     }
 
     setReviewReminderMessage('通知はすでに許可されています。');
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    const registerNotificationOpenTabListener = async () => {
+      try {
+        const nextUnlisten = await listen<string>(notificationOpenTabEventName, (event) => {
+          const tab = event.payload;
+          if (tab === 'assigned' || tab === 'review') {
+            requestTabNavigation(tab);
+          }
+        });
+        if (!alive) {
+          nextUnlisten();
+          return;
+        }
+        unlisten = nextUnlisten;
+      } catch {
+        // Ignore registration failure and keep notification delivery behavior.
+      }
+    };
+
+    void registerNotificationOpenTabListener();
+
+    return () => {
+      alive = false;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [requestTabNavigation]);
+
+  useEffect(() => {
+    if (!isTauriRuntime() || typeof window === 'undefined') {
+      return;
+    }
+
+    const handleDomNotificationOpenTab = (event: Event) => {
+      const tab = (event as CustomEvent<string>).detail;
+      if (tab === 'assigned' || tab === 'review') {
+        requestTabNavigation(tab);
+      }
+    };
+    window.addEventListener('gitlab-action-radar:notification-open-tab', handleDomNotificationOpenTab as EventListener);
+    return () => {
+      window.removeEventListener('gitlab-action-radar:notification-open-tab', handleDomNotificationOpenTab as EventListener);
+    };
+  }, [requestTabNavigation]);
+
+  useEffect(() => {
+    if (!isTauriRuntime() || typeof window === 'undefined') {
+      return;
+    }
+
+    const syncPendingTab = () => {
+      void consumePendingNotificationTab();
+    };
+
+    syncPendingTab();
+    window.addEventListener('focus', syncPendingTab);
+    document.addEventListener('visibilitychange', syncPendingTab);
+    const intervalId = window.setInterval(syncPendingTab, 1500);
+
+    return () => {
+      window.removeEventListener('focus', syncPendingTab);
+      document.removeEventListener('visibilitychange', syncPendingTab);
+      window.clearInterval(intervalId);
+    };
+  }, [consumePendingNotificationTab]);
+
+  const sendClickableNotification = useCallback(async (options: { title: string; body: string; openTab: TabKey }) => {
+    if (isTauriRuntime()) {
+      try {
+        await invoke('send_clickable_notification', { payload: options });
+        return;
+      } catch (err) {
+        console.error('Failed to send clickable notification via backend command:', err);
+        // Fall back to standard notifications below.
+      }
+    }
+
+    sendNotification({
+      title: options.title,
+      body: options.body
+    });
   }, []);
 
   const sendTestNotification = useCallback(async () => {
@@ -793,9 +929,10 @@ export function App() {
     }
 
     try {
-      sendNotification({
+      await sendClickableNotification({
         title: 'GitLab Action Radar',
-        body: `要レビュー ${counts.needsReview}件 / 作者修正待ち ${counts.waitingForAuthor}件 / 未着手 ${counts.new}件`
+        body: `要レビュー ${counts.needsReview}件 / 作者修正待ち ${counts.waitingForAuthor}件 / 未着手 ${counts.new}件`,
+        openTab: 'review'
       });
       setReviewReminderMessage(
         `リマインド通知を送信しました (${scheduledTime}) - 要レビュー ${counts.needsReview}件 / 作者修正待ち ${counts.waitingForAuthor}件 / 未着手 ${counts.new}件`
@@ -803,7 +940,7 @@ export function App() {
     } catch (err) {
       setReviewReminderMessage(`通知送信に失敗しました: ${toMessage(err)}`);
     }
-  }, [ensureNotificationPermissionForSend]);
+  }, [ensureNotificationPermissionForSend, sendClickableNotification]);
 
   const notifyImmediateAssignedAlerts = useCallback(async (diff: AssignedAlertDiff) => {
     if (diff.newlyConflicted.length === 0 && diff.newlyFailedCi.length === 0) {
@@ -816,14 +953,15 @@ export function App() {
     }
 
     try {
-      sendNotification({
+      await sendClickableNotification({
         title: 'GitLab Action Radar',
-        body: buildImmediateAlertNotificationBody(diff)
+        body: buildImmediateAlertNotificationBody(diff),
+        openTab: 'assigned'
       });
     } catch (err) {
       setReviewReminderMessage(`即時通知の送信に失敗しました: ${toMessage(err)}`);
     }
-  }, [ensureNotificationPermissionForSend]);
+  }, [ensureNotificationPermissionForSend, sendClickableNotification]);
 
   const savePatToken = async () => {
     const token = patInput.trim();
@@ -1098,7 +1236,7 @@ export function App() {
             </div>
           </CardHeader>
           <CardContent>
-            <Tabs defaultValue="radar">
+            <Tabs value={activeMainTab} onValueChange={(value) => setActiveMainTab(value as 'radar' | 'settings')}>
               <TabsList className="grid w-full max-w-xs grid-cols-2">
                 <TabsTrigger value="radar">Radar</TabsTrigger>
                 <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -1111,6 +1249,7 @@ export function App() {
                   loading={loading}
                   error={error}
                   onOpenMergeRequest={openExternalUrl}
+                  tabNavigationRequest={tabNavigationRequest}
                 />
               </TabsContent>
 

@@ -2,13 +2,15 @@
 
 use keyring::{Entry, Error as KeyringError};
 use serde::Deserialize;
+use std::sync::{Mutex, OnceLock};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{image::Image, Manager, WindowEvent};
+use tauri::{image::Image, Emitter, Manager, WindowEvent};
 
 const KEYRING_SERVICE: &str = "gitlab-action-radar";
 const KEYRING_ACCOUNT: &str = "gitlab-pat";
 const TRAY_ID: &str = "main-tray";
+const NOTIFICATION_OPEN_TAB_EVENT: &str = "notification-open-tab";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,6 +19,25 @@ struct TrayIndicatorPayload {
     failed_ci_count: u32,
     review_pending_count: u32,
     actionable_total_count: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ClickableNotificationPayload {
+    title: String,
+    body: String,
+    open_tab: String,
+}
+
+fn pending_notification_tab_slot() -> &'static Mutex<Option<String>> {
+    static SLOT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    SLOT.get_or_init(|| Mutex::new(None))
+}
+
+fn set_pending_notification_tab(tab: String) {
+    if let Ok(mut slot) = pending_notification_tab_slot().lock() {
+        *slot = Some(tab);
+    }
 }
 
 fn set_pixel(rgba: &mut [u8], width: u32, x: u32, y: u32, color: [u8; 4]) {
@@ -192,6 +213,81 @@ fn open_notification_settings() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "main window not found".to_string())?;
+    let _ = window.unminimize();
+    window
+        .show()
+        .map_err(|err| format!("failed to show main window: {err}"))?;
+    window
+        .set_focus()
+        .map_err(|err| format!("failed to focus main window: {err}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+fn send_clickable_notification(
+    app: tauri::AppHandle,
+    payload: ClickableNotificationPayload,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let app_handle = app.clone();
+        let app_identifier = app.config().identifier.clone();
+        std::thread::spawn(move || {
+            let _ = mac_notification_sys::set_application(&app_identifier);
+            let mut notification = mac_notification_sys::Notification::new();
+            notification
+                .title(&payload.title)
+                .message(&payload.body)
+                .main_button(mac_notification_sys::MainButton::SingleAction("Open"))
+                .close_button("Dismiss")
+                .wait_for_click(true)
+                .asynchronous(false);
+
+            let response = notification.send();
+            if matches!(
+                response,
+                Ok(mac_notification_sys::NotificationResponse::Click)
+                    | Ok(mac_notification_sys::NotificationResponse::ActionButton(_))
+            ) {
+                let _ = show_main_window(app_handle.clone());
+                if payload.open_tab == "assigned" || payload.open_tab == "review" {
+                    let open_tab = payload.open_tab.clone();
+                    set_pending_notification_tab(open_tab.clone());
+                    let _ = app_handle.emit(NOTIFICATION_OPEN_TAB_EVENT, open_tab.clone());
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let script = format!(
+                            "window.dispatchEvent(new CustomEvent('gitlab-action-radar:notification-open-tab', {{ detail: '{}' }}));",
+                            open_tab
+                        );
+                        let _ = window.eval(&script);
+                    }
+                }
+            }
+        });
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        let _ = payload;
+        Err("clickable notifications are only supported on macOS".to_string())
+    }
+}
+
+#[tauri::command]
+fn take_pending_notification_tab() -> Option<String> {
+    if let Ok(mut slot) = pending_notification_tab_slot().lock() {
+        return slot.take();
+    }
+    None
+}
+
+#[tauri::command]
 fn update_tray_indicator(
     app: tauri::AppHandle,
     payload: TrayIndicatorPayload,
@@ -235,6 +331,9 @@ fn main() {
             clear_pat,
             open_external_url,
             open_notification_settings,
+            show_main_window,
+            send_clickable_notification,
+            take_pending_notification_tab,
             update_tray_indicator
         ])
         .setup(|app| {
