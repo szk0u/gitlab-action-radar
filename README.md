@@ -13,6 +13,20 @@ Tauri 起動:
 pnpm tauri dev
 ```
 
+## ビルド
+フロントエンド（`dist`）をビルド:
+```bash
+pnpm build
+```
+
+配布用の Tauri アプリをビルド:
+```bash
+pnpm tauri build
+```
+
+`pnpm tauri build` 実行時は `beforeBuildCommand` により `pnpm build` も自動実行されます。  
+成果物は `src-tauri/target/release/bundle` 配下に生成されます。
+
 ## テスト (Vitest)
 ```bash
 pnpm test
