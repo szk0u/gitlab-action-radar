@@ -6,6 +6,7 @@ use std::sync::{Mutex, OnceLock};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{image::Image, Emitter, Manager, WindowEvent};
+use url::Url;
 
 const KEYRING_SERVICE: &str = "gitlab-action-radar";
 const KEYRING_ACCOUNT: &str = "gitlab-pat";
@@ -182,11 +183,12 @@ fn clear_pat() -> Result<(), String> {
 
 #[tauri::command]
 fn open_external_url(url: String) -> Result<(), String> {
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
+    let parsed = Url::parse(&url).map_err(|_| "invalid URL".to_string())?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
         return Err("only http/https URLs are supported".to_string());
     }
 
-    open::that_detached(url).map_err(|err| format!("failed to open URL: {err}"))
+    open::that_detached(parsed.as_str()).map_err(|err| format!("failed to open URL: {err}"))
 }
 
 #[tauri::command]
@@ -258,13 +260,6 @@ fn send_clickable_notification(
                     let open_tab = payload.open_tab.clone();
                     set_pending_notification_tab(open_tab.clone());
                     let _ = app_handle.emit(NOTIFICATION_OPEN_TAB_EVENT, open_tab.clone());
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        let script = format!(
-                            "window.dispatchEvent(new CustomEvent('gitlab-action-radar:notification-open-tab', {{ detail: '{}' }}));",
-                            open_tab
-                        );
-                        let _ = window.eval(&script);
-                    }
                 }
             }
         });

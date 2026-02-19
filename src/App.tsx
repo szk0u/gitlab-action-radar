@@ -19,7 +19,15 @@ import {
 import { MergeRequestHealth } from './types/gitlab';
 
 const gitlabBaseUrl = import.meta.env.VITE_GITLAB_BASE_URL ?? 'https://gitlab.com';
-const gitlabTokenFromEnv = import.meta.env.VITE_GITLAB_TOKEN ?? '';
+const gitlabTokenFromEnvRaw = import.meta.env.VITE_GITLAB_TOKEN ?? '';
+const gitlabTokenFromEnv = import.meta.env.DEV ? gitlabTokenFromEnvRaw : '';
+const isGitlabTokenFromEnvBlocked = !import.meta.env.DEV && gitlabTokenFromEnvRaw.trim().length > 0;
+const gitlabTokenFromEnvBlockedMessage = 'VITE_GITLAB_TOKEN は開発時のみ有効です。PAT を安全ストアに保存してください。';
+const missingPatTokenMessage = isGitlabTokenFromEnvBlocked
+  ? 'PAT を保存してください。VITE_GITLAB_TOKEN は開発時のみ有効です。'
+  : import.meta.env.DEV
+    ? 'PAT を保存するか、VITE_GITLAB_TOKEN を設定してください。'
+    : 'PAT を保存してください。';
 const gitlabPatIssueUrl =
   import.meta.env.VITE_GITLAB_PAT_ISSUE_URL ?? `${gitlabBaseUrl.replace(/\/$/, '')}/-/user_settings/personal_access_tokens`;
 const localStorageReviewReminderEnabledKey = 'review-reminder-enabled';
@@ -49,6 +57,18 @@ function toMessage(error: unknown): string {
 
 function isTauriRuntime(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
+function toSafeHttpUrl(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return undefined;
+    }
+    return url.toString();
+  } catch {
+    return undefined;
+  }
 }
 
 function parseTime(value: string): { hours: number; minutes: number } | undefined {
@@ -740,6 +760,7 @@ export function App() {
         } else {
           setPatToken(gitlabTokenFromEnv);
           setHasSavedPatToken(false);
+          setAuthMessage(isGitlabTokenFromEnvBlocked ? gitlabTokenFromEnvBlockedMessage : undefined);
         }
       } catch (err) {
         if (!alive) {
@@ -764,18 +785,28 @@ export function App() {
   }, []);
 
   const openExternalUrl = useCallback(async (url: string) => {
-    if (isTauriRuntime()) {
-      try {
-        await invoke('open_external_url', { url });
-        return;
-      } catch {
-        // Fall back to browser APIs below.
-      }
+    const safeUrl = toSafeHttpUrl(url);
+    if (!safeUrl) {
+      console.warn('Blocked unsafe external URL:', url);
+      return;
     }
 
-    const openedWindow = window.open(url, '_blank', 'noopener,noreferrer');
+    if (isTauriRuntime()) {
+      try {
+        await invoke('open_external_url', { url: safeUrl });
+      } catch (err) {
+        console.error('Failed to open URL via backend command:', err);
+      }
+      return;
+    }
+
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    const openedWindow = window.open(safeUrl, '_blank', 'noopener,noreferrer');
     if (!openedWindow) {
-      window.location.assign(url);
+      window.location.assign(safeUrl);
     }
   }, []);
 
@@ -915,23 +946,6 @@ export function App() {
       if (unlisten) {
         unlisten();
       }
-    };
-  }, [requestTabNavigation]);
-
-  useEffect(() => {
-    if (!isTauriRuntime() || typeof window === 'undefined') {
-      return;
-    }
-
-    const handleDomNotificationOpenTab = (event: Event) => {
-      const tab = (event as CustomEvent<string>).detail;
-      if (tab === 'assigned' || tab === 'review') {
-        requestTabNavigation(tab);
-      }
-    };
-    window.addEventListener('gitlab-action-radar:notification-open-tab', handleDomNotificationOpenTab as EventListener);
-    return () => {
-      window.removeEventListener('gitlab-action-radar:notification-open-tab', handleDomNotificationOpenTab as EventListener);
     };
   }, [requestTabNavigation]);
 
@@ -1110,7 +1124,9 @@ export function App() {
       setPatToken(gitlabTokenFromEnv);
       setPatInput('');
       setAuthMessage(
-        gitlabTokenFromEnv
+        isGitlabTokenFromEnvBlocked
+          ? `保存済みPATを削除しました。${gitlabTokenFromEnvBlockedMessage}`
+          : gitlabTokenFromEnv
           ? '保存済みPATを削除し、環境変数の PAT に戻しました。'
           : '保存済みPATを削除しました。'
       );
@@ -1138,7 +1154,7 @@ export function App() {
       setAssignedItems([]);
       setReviewRequestedItems([]);
       setLoading(false);
-      setError('PAT を保存するか、VITE_GITLAB_TOKEN を設定してください。');
+      setError(missingPatTokenMessage);
       await updateTrayIndicator({
         conflictCount: 0,
         failedCiCount: 0,
