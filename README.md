@@ -31,6 +31,7 @@ pnpm test
   - 自分のレビュー待ち: 青
 - 対応が必要な MR の合計件数をトレイタイトルに表示します（0件時は非表示）。
 - Settings の `Auto polling` から定期更新を設定できます（既定 5 分、3〜60 分）。
+- `Auto polling` / `Review reminder` の設定は `tauri-plugin-store`（`app-settings.json`）に保存され、再起動後も保持されます。
 
 ## 認証
 - PAT のみ対応

@@ -40,6 +40,13 @@
 - `VITE_GITLAB_TOKEN`
 - `VITE_GITLAB_PAT_ISSUE_URL`
 
+アプリ永続設定（`tauri-plugin-store`）:
+- `reviewReminderEnabled`
+- `reviewReminderTimes`
+- `notifiedReviewReminderSlots`
+- `autoPollingEnabled`
+- `autoPollingIntervalMinutes`
+
 ## 5. 拡張案
 - 定期ポーリング（例: 60秒）
 - 通知（CI failure のみ通知）

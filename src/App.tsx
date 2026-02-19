@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { requestPermission as requestNotificationPermissionApi, sendNotification } from '@tauri-apps/plugin-notification';
+import { Store } from '@tauri-apps/plugin-store';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GitLabClient } from './api/gitlabClient';
@@ -14,12 +15,14 @@ const gitlabBaseUrl = import.meta.env.VITE_GITLAB_BASE_URL ?? 'https://gitlab.co
 const gitlabTokenFromEnv = import.meta.env.VITE_GITLAB_TOKEN ?? '';
 const gitlabPatIssueUrl =
   import.meta.env.VITE_GITLAB_PAT_ISSUE_URL ?? `${gitlabBaseUrl.replace(/\/$/, '')}/-/user_settings/personal_access_tokens`;
-const reviewReminderEnabledKey = 'review-reminder-enabled';
-const reviewReminderTimesKey = 'review-reminder-times';
-const reviewReminderLegacyTimeKey = 'review-reminder-time';
-const reviewReminderNotifiedSlotsKey = 'review-reminder-notified-slots';
-const autoPollingEnabledKey = 'auto-polling-enabled';
-const autoPollingIntervalMinutesKey = 'auto-polling-interval-minutes';
+const localStorageReviewReminderEnabledKey = 'review-reminder-enabled';
+const localStorageReviewReminderTimesKey = 'review-reminder-times';
+const localStorageReviewReminderLegacyTimeKey = 'review-reminder-time';
+const localStorageReviewReminderNotifiedSlotsKey = 'review-reminder-notified-slots';
+const localStorageAutoPollingEnabledKey = 'auto-polling-enabled';
+const localStorageAutoPollingIntervalMinutesKey = 'auto-polling-interval-minutes';
+const appSettingsStorePath = 'app-settings.json';
+const appSettingsStoreKey = 'settings';
 const defaultAutoPollingIntervalMinutes = 5;
 const minAutoPollingIntervalMinutes = 3;
 const maxAutoPollingIntervalMinutes = 60;
@@ -72,10 +75,7 @@ function resolveInitialReminderTimes(rawTimes: string | null, legacyTime: string
     try {
       const parsed = JSON.parse(rawTimes) as unknown;
       if (Array.isArray(parsed)) {
-        const normalized = normalizeReminderTimes(parsed.filter((value): value is string => typeof value === 'string'));
-        if (normalized.length > 0) {
-          return normalized;
-        }
+        return normalizeReminderTimes(parsed.filter((value): value is string => typeof value === 'string'));
       }
     } catch {
       // Ignore malformed storage and fallback to legacy/default below.
@@ -127,6 +127,78 @@ function parseAutoPollingIntervalMinutes(value: string | null): number {
 
   const parsed = Number(value);
   return normalizePollingIntervalMinutes(parsed);
+}
+
+interface AppSettingsPayload {
+  reviewReminderEnabled?: boolean;
+  reviewReminderTimes?: string[];
+  notifiedReviewReminderSlots?: string[];
+  autoPollingEnabled?: boolean;
+  autoPollingIntervalMinutes?: number;
+}
+
+interface AppSettings {
+  reviewReminderEnabled: boolean;
+  reviewReminderTimes: string[];
+  notifiedReviewReminderSlots: string[];
+  autoPollingEnabled: boolean;
+  autoPollingIntervalMinutes: number;
+}
+
+function serializeSettings(settings: AppSettings): string {
+  return JSON.stringify(settings);
+}
+
+function normalizeAppSettings(payload: AppSettingsPayload | null | undefined): AppSettings {
+  const times =
+    payload && Array.isArray(payload.reviewReminderTimes)
+      ? normalizeReminderTimes(payload.reviewReminderTimes.filter((value): value is string => typeof value === 'string'))
+      : ['09:00'];
+  const notifiedSlots =
+    payload && Array.isArray(payload.notifiedReviewReminderSlots)
+      ? payload.notifiedReviewReminderSlots.filter((slot): slot is string => typeof slot === 'string')
+      : [];
+
+  return {
+    reviewReminderEnabled: payload?.reviewReminderEnabled === true,
+    reviewReminderTimes: times,
+    notifiedReviewReminderSlots: notifiedSlots,
+    autoPollingEnabled: payload?.autoPollingEnabled == null ? true : payload.autoPollingEnabled === true,
+    autoPollingIntervalMinutes: normalizePollingIntervalMinutes(payload?.autoPollingIntervalMinutes ?? defaultAutoPollingIntervalMinutes)
+  };
+}
+
+function loadLegacyLocalStorageSettings(): AppSettings {
+  if (typeof window === 'undefined') {
+    return normalizeAppSettings(undefined);
+  }
+
+  const enabledValue = window.localStorage.getItem(localStorageReviewReminderEnabledKey);
+  const timesValue = window.localStorage.getItem(localStorageReviewReminderTimesKey);
+  const legacyTimeValue = window.localStorage.getItem(localStorageReviewReminderLegacyTimeKey);
+  const notifiedSlotsValue = window.localStorage.getItem(localStorageReviewReminderNotifiedSlotsKey);
+  const autoPollingEnabledValue = window.localStorage.getItem(localStorageAutoPollingEnabledKey);
+  const autoPollingIntervalMinutesValue = window.localStorage.getItem(localStorageAutoPollingIntervalMinutesKey);
+
+  return {
+    reviewReminderEnabled: enabledValue === 'true',
+    reviewReminderTimes: resolveInitialReminderTimes(timesValue, legacyTimeValue),
+    notifiedReviewReminderSlots: parseNotifiedSlots(notifiedSlotsValue),
+    autoPollingEnabled: autoPollingEnabledValue == null ? true : autoPollingEnabledValue === 'true',
+    autoPollingIntervalMinutes: parseAutoPollingIntervalMinutes(autoPollingIntervalMinutesValue)
+  };
+}
+
+function saveSettingsToLegacyLocalStorage(settings: AppSettings): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(localStorageReviewReminderEnabledKey, String(settings.reviewReminderEnabled));
+  window.localStorage.setItem(localStorageReviewReminderTimesKey, JSON.stringify(settings.reviewReminderTimes));
+  window.localStorage.setItem(localStorageReviewReminderNotifiedSlotsKey, JSON.stringify(settings.notifiedReviewReminderSlots));
+  window.localStorage.setItem(localStorageAutoPollingEnabledKey, String(settings.autoPollingEnabled));
+  window.localStorage.setItem(localStorageAutoPollingIntervalMinutesKey, String(settings.autoPollingIntervalMinutes));
 }
 
 interface ReviewStatusCounts {
@@ -262,7 +334,35 @@ export function App() {
   );
   const [autoPollingEnabled, setAutoPollingEnabled] = useState(true);
   const [autoPollingIntervalMinutes, setAutoPollingIntervalMinutes] = useState(defaultAutoPollingIntervalMinutes);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const loadInFlightRef = useRef(false);
+  const settingsStoreRef = useRef<Store | null>(null);
+  const lastPersistedSettingsRef = useRef<string | null>(null);
+  const getSettingsStore = useCallback(async (): Promise<Store> => {
+    if (settingsStoreRef.current) {
+      return settingsStoreRef.current;
+    }
+
+    const store = await Store.load(appSettingsStorePath);
+    settingsStoreRef.current = store;
+    return store;
+  }, []);
+  const saveAppSettings = useCallback(async (settings: AppSettings): Promise<void> => {
+    const serializedSettings = serializeSettings(settings);
+    if (lastPersistedSettingsRef.current === serializedSettings) {
+      return;
+    }
+
+    if (isTauriRuntime()) {
+      const settingsStore = await getSettingsStore();
+      await settingsStore.set(appSettingsStoreKey, settings);
+      await settingsStore.save();
+    } else {
+      saveSettingsToLegacyLocalStorage(settings);
+    }
+
+    lastPersistedSettingsRef.current = serializedSettings;
+  }, [getSettingsStore]);
 
   const client = useMemo(() => {
     if (!patToken) {
@@ -277,22 +377,62 @@ export function App() {
       return;
     }
 
-    const enabledValue = window.localStorage.getItem(reviewReminderEnabledKey);
-    const timesValue = window.localStorage.getItem(reviewReminderTimesKey);
-    const legacyTimeValue = window.localStorage.getItem(reviewReminderLegacyTimeKey);
-    const notifiedSlotsValue = window.localStorage.getItem(reviewReminderNotifiedSlotsKey);
-    const autoPollingEnabledValue = window.localStorage.getItem(autoPollingEnabledKey);
-    const autoPollingIntervalMinutesValue = window.localStorage.getItem(autoPollingIntervalMinutesKey);
-    const initialTimes = resolveInitialReminderTimes(timesValue, legacyTimeValue);
+    let alive = true;
+    const applySettings = (settings: AppSettings) => {
+      setReviewReminderEnabled(settings.reviewReminderEnabled);
+      setReviewReminderTimes(settings.reviewReminderTimes);
+      setReviewReminderTimeInput(settings.reviewReminderTimes[0] ?? '09:00');
+      setNotifiedReviewReminderSlots(settings.notifiedReviewReminderSlots);
+      setAutoPollingEnabled(settings.autoPollingEnabled);
+      setAutoPollingIntervalMinutes(settings.autoPollingIntervalMinutes);
+    };
 
-    setReviewReminderEnabled(enabledValue === 'true');
-    setReviewReminderTimes(initialTimes);
-    setReviewReminderTimeInput(initialTimes[0] ?? '09:00');
-    setNotifiedReviewReminderSlots(parseNotifiedSlots(notifiedSlotsValue));
-    setAutoPollingEnabled(autoPollingEnabledValue == null ? true : autoPollingEnabledValue === 'true');
-    setAutoPollingIntervalMinutes(parseAutoPollingIntervalMinutes(autoPollingIntervalMinutesValue));
-    window.localStorage.removeItem(reviewReminderLegacyTimeKey);
-  }, []);
+    const loadSettings = async () => {
+      const tauriRuntime = isTauriRuntime();
+      let nextSettings: AppSettings | undefined;
+
+      if (tauriRuntime) {
+        try {
+          const settingsStore = await getSettingsStore();
+          const storedSettings = await settingsStore.get<AppSettingsPayload>(appSettingsStoreKey);
+          if (storedSettings) {
+            nextSettings = normalizeAppSettings(storedSettings);
+            lastPersistedSettingsRef.current = serializeSettings(nextSettings);
+          }
+        } catch {
+          // Ignore Tauri settings load failure and fallback to legacy localStorage.
+        }
+      }
+
+      if (!nextSettings) {
+        nextSettings = loadLegacyLocalStorageSettings();
+        window.localStorage.removeItem(localStorageReviewReminderLegacyTimeKey);
+
+        if (tauriRuntime) {
+          try {
+            await saveAppSettings(nextSettings);
+          } catch {
+            // Ignore migration failure and keep the loaded in-memory settings.
+          }
+        } else {
+          lastPersistedSettingsRef.current = serializeSettings(nextSettings);
+        }
+      }
+
+      if (!alive) {
+        return;
+      }
+
+      applySettings(nextSettings);
+      setSettingsLoaded(true);
+    };
+
+    void loadSettings();
+
+    return () => {
+      alive = false;
+    };
+  }, [getSettingsStore, saveAppSettings]);
 
   useEffect(() => {
     let alive = true;
@@ -627,39 +767,30 @@ export function App() {
   }, [authLoading, autoPollingEnabled, autoPollingIntervalMinutes, client, loadMergeRequests]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') {
+    if (!settingsLoaded || typeof window === 'undefined') {
       return;
     }
 
-    window.localStorage.setItem(reviewReminderEnabledKey, String(reviewReminderEnabled));
-  }, [reviewReminderEnabled]);
+    const nextSettings: AppSettings = {
+      reviewReminderEnabled,
+      reviewReminderTimes: normalizeReminderTimes(reviewReminderTimes),
+      notifiedReviewReminderSlots,
+      autoPollingEnabled,
+      autoPollingIntervalMinutes: normalizePollingIntervalMinutes(autoPollingIntervalMinutes)
+    };
 
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    window.localStorage.setItem(reviewReminderTimesKey, JSON.stringify(reviewReminderTimes));
-  }, [reviewReminderTimes]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    window.localStorage.setItem(autoPollingEnabledKey, String(autoPollingEnabled));
-  }, [autoPollingEnabled]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    window.localStorage.setItem(
-      autoPollingIntervalMinutesKey,
-      String(normalizePollingIntervalMinutes(autoPollingIntervalMinutes))
-    );
-  }, [autoPollingIntervalMinutes]);
+    void saveAppSettings(nextSettings).catch(() => {
+      // Ignore settings save failure and keep the current in-memory state.
+    });
+  }, [
+    autoPollingEnabled,
+    autoPollingIntervalMinutes,
+    notifiedReviewReminderSlots,
+    reviewReminderEnabled,
+    reviewReminderTimes,
+    saveAppSettings,
+    settingsLoaded
+  ]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -676,14 +807,6 @@ export function App() {
       window.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [refreshNotificationPermission]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    window.localStorage.setItem(reviewReminderNotifiedSlotsKey, JSON.stringify(notifiedReviewReminderSlots));
-  }, [notifiedReviewReminderSlots]);
 
   useEffect(() => {
     if (!reviewReminderEnabled || authLoading || !client) {
