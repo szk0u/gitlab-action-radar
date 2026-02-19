@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GitLabClient } from './api/gitlabClient';
 import { MergeRequestList } from './components/MergeRequestList';
 import { Button } from './components/ui/button';
@@ -17,6 +17,11 @@ const reviewReminderEnabledKey = 'review-reminder-enabled';
 const reviewReminderTimesKey = 'review-reminder-times';
 const reviewReminderLegacyTimeKey = 'review-reminder-time';
 const reviewReminderNotifiedSlotsKey = 'review-reminder-notified-slots';
+const autoPollingEnabledKey = 'auto-polling-enabled';
+const autoPollingIntervalMinutesKey = 'auto-polling-interval-minutes';
+const defaultAutoPollingIntervalMinutes = 5;
+const minAutoPollingIntervalMinutes = 3;
+const maxAutoPollingIntervalMinutes = 60;
 
 function toMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -99,11 +104,42 @@ function parseNotifiedSlots(value: string | null): string[] {
   }
 }
 
+function normalizePollingIntervalMinutes(value: number): number {
+  if (!Number.isFinite(value)) {
+    return defaultAutoPollingIntervalMinutes;
+  }
+
+  const rounded = Math.round(value);
+  if (rounded < minAutoPollingIntervalMinutes) {
+    return minAutoPollingIntervalMinutes;
+  }
+  if (rounded > maxAutoPollingIntervalMinutes) {
+    return maxAutoPollingIntervalMinutes;
+  }
+  return rounded;
+}
+
+function parseAutoPollingIntervalMinutes(value: string | null): number {
+  if (!value) {
+    return defaultAutoPollingIntervalMinutes;
+  }
+
+  const parsed = Number(value);
+  return normalizePollingIntervalMinutes(parsed);
+}
+
 interface ReviewStatusCounts {
   total: number;
   needsReview: number;
   waitingForAuthor: number;
   new: number;
+}
+
+interface TrayIndicatorSummary {
+  conflictCount: number;
+  failedCiCount: number;
+  reviewPendingCount: number;
+  actionableTotalCount: number;
 }
 
 function summarizeReviewStatusCounts(items: MergeRequestHealth[]): ReviewStatusCounts {
@@ -130,6 +166,43 @@ function summarizeReviewStatusCounts(items: MergeRequestHealth[]): ReviewStatusC
   return result;
 }
 
+function summarizeTrayIndicator(
+  assigned: MergeRequestHealth[],
+  reviewRequested: MergeRequestHealth[]
+): TrayIndicatorSummary {
+  let conflictCount = 0;
+  let failedCiCount = 0;
+  let reviewPendingCount = 0;
+  const actionableMergeRequestIds = new Set<number>();
+
+  for (const item of assigned) {
+    if (item.hasConflicts) {
+      conflictCount += 1;
+      actionableMergeRequestIds.add(item.mergeRequest.id);
+    }
+
+    if (item.hasFailedCi) {
+      failedCiCount += 1;
+      actionableMergeRequestIds.add(item.mergeRequest.id);
+    }
+  }
+
+  for (const item of reviewRequested) {
+    const status = item.reviewerChecks?.reviewStatus ?? 'new';
+    if (status === 'needs_review' || status === 'new') {
+      reviewPendingCount += 1;
+      actionableMergeRequestIds.add(item.mergeRequest.id);
+    }
+  }
+
+  return {
+    conflictCount,
+    failedCiCount,
+    reviewPendingCount,
+    actionableTotalCount: actionableMergeRequestIds.size
+  };
+}
+
 export function App() {
   const [patToken, setPatToken] = useState<string>(gitlabTokenFromEnv);
   const [patInput, setPatInput] = useState<string>('');
@@ -145,6 +218,9 @@ export function App() {
   const [reviewReminderTimeInput, setReviewReminderTimeInput] = useState('09:00');
   const [notifiedReviewReminderSlots, setNotifiedReviewReminderSlots] = useState<string[]>([]);
   const [reviewReminderMessage, setReviewReminderMessage] = useState<string | undefined>();
+  const [autoPollingEnabled, setAutoPollingEnabled] = useState(true);
+  const [autoPollingIntervalMinutes, setAutoPollingIntervalMinutes] = useState(defaultAutoPollingIntervalMinutes);
+  const loadInFlightRef = useRef(false);
 
   const client = useMemo(() => {
     if (!patToken) {
@@ -163,12 +239,16 @@ export function App() {
     const timesValue = window.localStorage.getItem(reviewReminderTimesKey);
     const legacyTimeValue = window.localStorage.getItem(reviewReminderLegacyTimeKey);
     const notifiedSlotsValue = window.localStorage.getItem(reviewReminderNotifiedSlotsKey);
+    const autoPollingEnabledValue = window.localStorage.getItem(autoPollingEnabledKey);
+    const autoPollingIntervalMinutesValue = window.localStorage.getItem(autoPollingIntervalMinutesKey);
     const initialTimes = resolveInitialReminderTimes(timesValue, legacyTimeValue);
 
     setReviewReminderEnabled(enabledValue === 'true');
     setReviewReminderTimes(initialTimes);
     setReviewReminderTimeInput(initialTimes[0] ?? '09:00');
     setNotifiedReviewReminderSlots(parseNotifiedSlots(notifiedSlotsValue));
+    setAutoPollingEnabled(autoPollingEnabledValue == null ? true : autoPollingEnabledValue === 'true');
+    setAutoPollingIntervalMinutes(parseAutoPollingIntervalMinutes(autoPollingIntervalMinutesValue));
     window.localStorage.removeItem(reviewReminderLegacyTimeKey);
   }, []);
 
@@ -236,6 +316,18 @@ export function App() {
   const openPatIssuePage = () => {
     void openExternalUrl(gitlabPatIssueUrl);
   };
+
+  const updateTrayIndicator = useCallback(async (summary: TrayIndicatorSummary) => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    try {
+      await invoke('update_tray_indicator', { payload: summary });
+    } catch {
+      // Ignore tray update failures and keep the current UI behavior.
+    }
+  }, []);
 
   const addReviewReminderTime = useCallback(() => {
     if (!parseTime(reviewReminderTimeInput)) {
@@ -329,16 +421,30 @@ export function App() {
     }
   };
 
-  const loadMergeRequests = useCallback(async (options?: { notifyReviewReminder?: boolean; reminderTime?: string }) => {
+  const loadMergeRequests = useCallback(async (options?: { notifyReviewReminder?: boolean; reminderTime?: string; background?: boolean }) => {
+    if (loadInFlightRef.current) {
+      return;
+    }
+
     if (!client) {
       setAssignedItems([]);
       setReviewRequestedItems([]);
       setLoading(false);
       setError('PAT を保存するか、VITE_GITLAB_TOKEN を設定してください。');
+      await updateTrayIndicator({
+        conflictCount: 0,
+        failedCiCount: 0,
+        reviewPendingCount: 0,
+        actionableTotalCount: 0
+      });
       return;
     }
 
-    setLoading(true);
+    loadInFlightRef.current = true;
+    const background = options?.background === true;
+    if (!background) {
+      setLoading(true);
+    }
     setError(undefined);
     try {
       const mergeRequests = await client.listMyRelevantMergeRequests();
@@ -350,6 +456,7 @@ export function App() {
       ]);
       setAssignedItems(assignedSignals);
       setReviewRequestedItems(reviewRequestedSignals);
+      await updateTrayIndicator(summarizeTrayIndicator(assignedSignals, reviewRequestedSignals));
 
       if (options?.notifyReviewReminder) {
         const reviewStatusCounts = summarizeReviewStatusCounts(reviewRequestedSignals);
@@ -363,9 +470,12 @@ export function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
+      loadInFlightRef.current = false;
     }
-  }, [client, notifyReviewReminder]);
+  }, [client, notifyReviewReminder, updateTrayIndicator]);
 
   useEffect(() => {
     if (authLoading) {
@@ -373,6 +483,24 @@ export function App() {
     }
     void loadMergeRequests();
   }, [authLoading, loadMergeRequests]);
+
+  useEffect(() => {
+    if (!autoPollingEnabled || authLoading || !client) {
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const intervalMs = normalizePollingIntervalMinutes(autoPollingIntervalMinutes) * 60_000;
+    const intervalId = window.setInterval(() => {
+      void loadMergeRequests({ background: true });
+    }, intervalMs);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [authLoading, autoPollingEnabled, autoPollingIntervalMinutes, client, loadMergeRequests]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -389,6 +517,25 @@ export function App() {
 
     window.localStorage.setItem(reviewReminderTimesKey, JSON.stringify(reviewReminderTimes));
   }, [reviewReminderTimes]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(autoPollingEnabledKey, String(autoPollingEnabled));
+  }, [autoPollingEnabled]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(
+      autoPollingIntervalMinutesKey,
+      String(normalizePollingIntervalMinutes(autoPollingIntervalMinutes))
+    );
+  }, [autoPollingIntervalMinutes]);
 
   useEffect(() => {
     if (!reviewReminderEnabled) {
@@ -437,6 +584,10 @@ export function App() {
           continue;
         }
         if (now.getHours() !== scheduled.hours || now.getMinutes() !== scheduled.minutes) {
+          continue;
+        }
+
+        if (loadInFlightRef.current) {
           continue;
         }
 
@@ -536,6 +687,43 @@ export function App() {
                   {!hasSavedPatToken && gitlabTokenFromEnv && (
                     <p className="text-sm text-slate-600">現在は環境変数のPATを使用しています。</p>
                   )}
+                </section>
+
+                <section className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                  <p className="text-sm font-medium text-slate-700">Auto polling</p>
+                  <div className="flex flex-col gap-2">
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={autoPollingEnabled}
+                        onChange={(event) => setAutoPollingEnabled(event.target.checked)}
+                        className="size-4"
+                      />
+                      Enable periodic refresh
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={minAutoPollingIntervalMinutes}
+                        max={maxAutoPollingIntervalMinutes}
+                        step={1}
+                        value={autoPollingIntervalMinutes}
+                        onChange={(event) =>
+                          setAutoPollingIntervalMinutes(
+                            normalizePollingIntervalMinutes(Number(event.target.value))
+                          )
+                        }
+                        disabled={!autoPollingEnabled}
+                        className="w-[120px]"
+                        aria-label="Auto polling interval minutes"
+                      />
+                      <span className="text-xs text-slate-600">minutes</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    GitLab負荷を抑えるため {minAutoPollingIntervalMinutes}〜{maxAutoPollingIntervalMinutes} 分で設定します
+                    （既定 {defaultAutoPollingIntervalMinutes} 分）。
+                  </p>
                 </section>
 
                 <section className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
