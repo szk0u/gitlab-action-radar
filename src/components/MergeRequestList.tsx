@@ -19,7 +19,7 @@ interface MergeRequestListProps {
 
 export type TabKey = 'assigned' | 'review';
 type ReviewStatusFilter = ReviewerReviewStatus | 'all';
-type AssignedStatusFilter = 'all' | 'conflicts' | 'failed_ci' | 'pending_approvals' | 'my_mr';
+type AssignedStatusFilter = 'all' | 'conflicts' | 'failed_ci' | 'pending_approvals';
 interface TabNavigationRequest {
   tab: TabKey;
   nonce: number;
@@ -87,7 +87,6 @@ function renderOwnMergeRequestChecks(item: MergeRequestHealth) {
 
   return (
     <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
-      <Badge variant="outline">My MR</Badge>
       <Badge className={isApproved ? 'border-transparent bg-emerald-100 text-emerald-700' : ''} variant={isApproved ? undefined : 'warning'}>
         {isApproved ? 'Approved' : 'Not approved'}
       </Badge>
@@ -129,7 +128,6 @@ interface AssignedStatusCounts {
   conflicts: number;
   failedCi: number;
   pendingApprovals: number;
-  myMr: number;
 }
 
 function getReviewStatus(item: MergeRequestHealth): ReviewerReviewStatus {
@@ -194,8 +192,7 @@ function summarizeAssignedStatuses(items: MergeRequestHealth[]): AssignedStatusC
   const result: AssignedStatusCounts = {
     conflicts: 0,
     failedCi: 0,
-    pendingApprovals: 0,
-    myMr: 0
+    pendingApprovals: 0
   };
 
   for (const item of items) {
@@ -207,9 +204,6 @@ function summarizeAssignedStatuses(items: MergeRequestHealth[]): AssignedStatusC
     }
     if (item.hasPendingApprovals) {
       result.pendingApprovals += 1;
-    }
-    if (item.isCreatedByMe) {
-      result.myMr += 1;
     }
   }
 
@@ -229,7 +223,7 @@ function matchesAssignedStatusFilter(item: MergeRequestHealth, filter: AssignedS
   if (filter === 'pending_approvals') {
     return item.hasPendingApprovals;
   }
-  return item.isCreatedByMe;
+  return false;
 }
 
 function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
@@ -414,9 +408,6 @@ export function MergeRequestList({
     if (assignedStatusFilter === 'pending_approvals') {
       return 'No assigned merge requests in 承認待ち.';
     }
-    if (assignedStatusFilter === 'my_mr') {
-      return 'No assigned merge requests in My MR.';
-    }
     return 'No assigned merge requests.';
   }, [assignedStatusFilter]);
   const sortedReviewRequestedItems = useMemo(
@@ -544,18 +535,6 @@ export function MergeRequestList({
                 onClick={() => toggleAssignedStatusFilter('pending_approvals')}
               >
                 承認待ち {assignedStatusCounts.pendingApprovals}
-              </button>
-              <button
-                type="button"
-                aria-pressed={assignedStatusFilter === 'my_mr'}
-                className={cn(
-                  badgeVariants({ variant: 'outline' }),
-                  'cursor-pointer transition-opacity',
-                  assignedStatusFilter === 'my_mr' ? 'ring-2 ring-slate-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
-                )}
-                onClick={() => toggleAssignedStatusFilter('my_mr')}
-              >
-                My MR {assignedStatusCounts.myMr}
               </button>
             </CardContent>
           </Card>
