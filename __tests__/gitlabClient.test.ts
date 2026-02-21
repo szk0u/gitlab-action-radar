@@ -74,6 +74,17 @@ describe('GitLabClient', () => {
               state: 'opened',
               has_conflicts: true,
               merge_status: 'cannot_be_merged'
+            },
+            {
+              id: 5,
+              iid: 50,
+              project_id: 500,
+              title: 'Reviewer state reviewed MR',
+              web_url: 'https://gitlab.com/group/project/-/merge_requests/50',
+              state: 'opened',
+              has_conflicts: false,
+              merge_status: 'can_be_merged',
+              reviewers: [{ id: 99, state: 'reviewed' }]
             }
           ] satisfies MergeRequest[]
       } as Response)
@@ -116,6 +127,10 @@ describe('GitLabClient', () => {
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/400/merge_requests/40/approvals',
+      expect.any(Object)
+    );
+    expect(mockFetch).not.toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/500/merge_requests/50/approvals',
       expect.any(Object)
     );
 
@@ -168,6 +183,7 @@ describe('GitLabClient', () => {
           json: async () => ({
             has_conflicts: true,
             merge_status: 'cannot_be_merged',
+            detailed_merge_status: 'ci_must_pass',
             head_pipeline: { status: 'failed' }
           })
         } as Response;
@@ -209,6 +225,7 @@ describe('GitLabClient', () => {
     const signals = await client.buildHealthSignals(data, 99);
 
     expect(signals[0]).toMatchObject({
+      ciStatus: 'success',
       hasFailedCi: false,
       hasConflicts: false,
       hasPendingApprovals: true,
@@ -216,11 +233,11 @@ describe('GitLabClient', () => {
       ownMrChecks: {
         isApproved: true,
         hasUnresolvedComments: true,
-        isCiSuccessful: true,
-        isCiFailed: false
+        ciStatus: 'success'
       }
     });
     expect(signals[1]).toMatchObject({
+      ciStatus: 'failed',
       hasFailedCi: true,
       hasConflicts: true,
       hasPendingApprovals: false,
@@ -240,6 +257,94 @@ describe('GitLabClient', () => {
       'https://gitlab.com/api/v4/projects/200/merge_requests/2',
       expect.any(Object)
     );
+  });
+
+  it('buildHealthSignals should avoid CI false positives when detailed merge status is healthy', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url === 'https://gitlab.com/api/v4/projects/300/merge_requests/3') {
+        return {
+          ok: true,
+          json: async () => ({
+            has_conflicts: false,
+            merge_status: 'can_be_merged',
+            detailed_merge_status: 'can_be_merged',
+            head_pipeline: { status: 'failed' }
+          })
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+
+    const client = new GitLabClient({ baseUrl: 'https://gitlab.com', token: 'token' });
+    const data: MergeRequest[] = [
+      {
+        id: 3,
+        iid: 3,
+        project_id: 300,
+        title: 'Healthy detailed status MR',
+        web_url: 'https://gitlab.com/group/project/-/merge_requests/3',
+        state: 'opened',
+        author: { id: 123, username: 'other', name: 'Other' },
+        has_conflicts: false,
+        merge_status: 'can_be_merged',
+        pipeline: { status: 'failed' }
+      }
+    ];
+
+    const signals = await client.buildHealthSignals(data, 99);
+
+    expect(signals[0]).toMatchObject({
+      ciStatus: 'unknown',
+      hasFailedCi: false,
+      hasConflicts: false
+    });
+  });
+
+  it('buildHealthSignals should keep failed CI when detailed merge status is not explicitly healthy', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+
+      if (url === 'https://gitlab.com/api/v4/projects/301/merge_requests/31') {
+        return {
+          ok: true,
+          json: async () => ({
+            has_conflicts: false,
+            merge_status: 'can_be_merged',
+            detailed_merge_status: 'not_approved',
+            head_pipeline: { status: 'failed' }
+          })
+        } as Response;
+      }
+
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+
+    const client = new GitLabClient({ baseUrl: 'https://gitlab.com', token: 'token' });
+    const data: MergeRequest[] = [
+      {
+        id: 31,
+        iid: 31,
+        project_id: 301,
+        title: 'Not approved with failed CI MR',
+        web_url: 'https://gitlab.com/group/project/-/merge_requests/31',
+        state: 'opened',
+        author: { id: 123, username: 'other', name: 'Other' },
+        has_conflicts: false,
+        merge_status: 'can_be_merged',
+        pipeline: { status: 'failed' }
+      }
+    ];
+
+    const signals = await client.buildHealthSignals(data, 99);
+
+    expect(signals[0]).toMatchObject({
+      ciStatus: 'failed',
+      hasFailedCi: true,
+      hasConflicts: false
+    });
   });
 
   it('buildHealthSignals should include reviewer review status details', async () => {
@@ -320,6 +425,7 @@ describe('GitLabClient', () => {
       authorLastCommentedAt: '2026-02-18T10:00:00Z'
     });
     expect(signals[0]).toMatchObject({
+      ciStatus: 'success',
       hasFailedCi: false,
       hasConflicts: false
     });

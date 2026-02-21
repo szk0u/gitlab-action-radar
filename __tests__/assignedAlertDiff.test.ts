@@ -14,6 +14,7 @@ function createHealth(id: number, iid: number, options?: { hasConflicts?: boolea
       has_conflicts: options?.hasConflicts === true,
       merge_status: options?.hasConflicts ? 'cannot_be_merged' : 'can_be_merged'
     },
+    ciStatus: options?.hasFailedCi === true ? 'failed' : 'success',
     hasConflicts: options?.hasConflicts === true,
     hasFailedCi: options?.hasFailedCi === true,
     hasPendingApprovals: false,

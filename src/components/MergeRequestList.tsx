@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, CheckCircle2, FolderGit2, GitPullRequest } from 'lucide-react';
-import { MergeRequest, MergeRequestHealth, ReviewerReviewStatus } from '../types/gitlab';
+import { CiStatus, MergeRequest, MergeRequestHealth, ReviewerReviewStatus } from '../types/gitlab';
 import { cn } from '../lib/utils';
 import { Badge, badgeVariants } from './ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -51,12 +51,33 @@ function getProjectLabel(mergeRequest: MergeRequest): string {
   return `Project #${mergeRequest.project_id}`;
 }
 
+function getCiStatusLabel(ciStatus: CiStatus): string {
+  if (ciStatus === 'waiting_for_resource') {
+    return 'waiting for resource';
+  }
+  return ciStatus;
+}
+
+function getCiBadgeVariant(ciStatus: CiStatus): 'destructive' | 'secondary' | undefined {
+  if (ciStatus === 'failed') {
+    return 'destructive';
+  }
+  if (ciStatus === 'success') {
+    return undefined;
+  }
+  return 'secondary';
+}
+
+function getCiBadgeClassName(ciStatus: CiStatus): string {
+  return ciStatus === 'success' ? 'border-transparent bg-emerald-100 text-emerald-700' : '';
+}
+
 function renderOwnMergeRequestChecks(item: MergeRequestHealth) {
   if (!item.isCreatedByMe || !item.ownMrChecks) {
     return null;
   }
 
-  const { isApproved, hasUnresolvedComments, isCiSuccessful } = item.ownMrChecks;
+  const { isApproved, hasUnresolvedComments } = item.ownMrChecks;
 
   return (
     <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
@@ -69,9 +90,6 @@ function renderOwnMergeRequestChecks(item: MergeRequestHealth) {
         variant={hasUnresolvedComments ? 'destructive' : undefined}
       >
         {hasUnresolvedComments ? 'Unresolved comments' : 'Comments resolved'}
-      </Badge>
-      <Badge className={isCiSuccessful ? 'border-transparent bg-emerald-100 text-emerald-700' : ''} variant={isCiSuccessful ? undefined : 'secondary'}>
-        {isCiSuccessful ? 'CI success' : 'CI not success'}
       </Badge>
     </div>
   );
@@ -249,7 +267,7 @@ function renderMergeRequestItem(
   onOpenMergeRequest?: (url: string) => void | Promise<void>,
   onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void
 ) {
-  const { mergeRequest, hasFailedCi, hasConflicts, hasPendingApprovals } = item;
+  const { mergeRequest, ciStatus, hasFailedCi, hasConflicts, hasPendingApprovals } = item;
   const isAtRisk = hasFailedCi || hasConflicts || hasPendingApprovals;
   const canIgnoreUntilNewCommit = tabKey === 'assigned' && (hasConflicts || hasFailedCi) && !!onIgnoreAssignedUntilNewCommit;
 
@@ -284,8 +302,8 @@ function renderMergeRequestItem(
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
-            <Badge className={hasFailedCi ? '' : 'border-transparent bg-emerald-100 text-emerald-700'} variant={hasFailedCi ? 'destructive' : undefined}>
-              {hasFailedCi ? 'CI failed' : 'CI not failed'}
+            <Badge className={getCiBadgeClassName(ciStatus)} variant={getCiBadgeVariant(ciStatus)}>
+              CI {getCiStatusLabel(ciStatus)}
             </Badge>
             <Badge className={hasConflicts ? '' : 'border-transparent bg-emerald-100 text-emerald-700'} variant={hasConflicts ? 'warning' : undefined}>
               {hasConflicts ? 'Conflicts' : 'No conflicts'}

@@ -1,4 +1,5 @@
 import {
+  CiStatus,
   GitLabUser,
   MergeRequestCommit,
   MergeRequest,
@@ -67,8 +68,23 @@ export class GitLabClient {
     return `${mergeRequest.project_id}:${mergeRequest.iid}`;
   }
 
+  private normalizeStatusValue(value: unknown): string {
+    return typeof value === 'string' ? value.trim().toLowerCase() : '';
+  }
+
   private isDraftMergeRequest(mergeRequest: MergeRequest): boolean {
     return mergeRequest.draft === true || mergeRequest.work_in_progress === true;
+  }
+
+  private hasReviewerMarkedReviewed(mergeRequest: MergeRequest, userId: number): boolean {
+    const reviewer = (mergeRequest.reviewers ?? []).find((item) => item.id === userId);
+    const reviewerState = this.normalizeStatusValue(reviewer?.state);
+    return (
+      reviewerState === 'reviewed' ||
+      reviewerState === 'approved' ||
+      reviewerState === 'requested_changes' ||
+      reviewerState === 'commented'
+    );
   }
 
   private getMergeRequestApprovals(mergeRequest: MergeRequest): Promise<MergeRequestApprovals | undefined> {
@@ -140,6 +156,10 @@ export class GitLabClient {
   }
 
   private async isReviewedByUser(mergeRequest: MergeRequest, userId: number): Promise<boolean> {
+    if (this.hasReviewerMarkedReviewed(mergeRequest, userId)) {
+      return true;
+    }
+
     if ((mergeRequest.approved_by ?? []).some((approval) => approval.user.id === userId)) {
       return true;
     }
@@ -195,18 +215,93 @@ export class GitLabClient {
       (typeof details?.unresolved_discussions_count === 'number' && details.unresolved_discussions_count > 0) ||
       details?.blocking_discussions_resolved === false;
     const normalizedCiStatus = this.getNormalizedCiStatus(mergeRequest, details);
+    const ciStatus = this.toCiStatus(normalizedCiStatus, details);
 
     return {
       isApproved,
       hasUnresolvedComments,
-      isCiSuccessful: normalizedCiStatus === 'success',
-      isCiFailed: normalizedCiStatus === 'failed'
+      ciStatus
     };
   }
 
   private getNormalizedCiStatus(mergeRequest: MergeRequest, details?: MergeRequestDetails): string {
-    const ciStatus = details?.head_pipeline?.status ?? details?.pipeline?.status ?? mergeRequest.pipeline?.status;
-    return typeof ciStatus === 'string' ? ciStatus.toLowerCase() : '';
+    const detailHeadPipelineStatus = this.normalizeStatusValue(details?.head_pipeline?.status);
+    if (detailHeadPipelineStatus) {
+      return detailHeadPipelineStatus;
+    }
+
+    const detailPipelineStatus = this.normalizeStatusValue(details?.pipeline?.status);
+    if (detailPipelineStatus) {
+      return detailPipelineStatus;
+    }
+
+    if (details) {
+      // Prefer MR details when available; list response pipeline can be stale.
+      return '';
+    }
+
+    return this.normalizeStatusValue(mergeRequest.pipeline?.status);
+  }
+
+  private isCiFailedStatus(normalizedCiStatus: string, details?: MergeRequestDetails): boolean {
+    if (normalizedCiStatus !== 'failed') {
+      return false;
+    }
+
+    const detailedMergeStatus = this.normalizeStatusValue(details?.detailed_merge_status);
+    if (!detailedMergeStatus) {
+      return true;
+    }
+
+    if (detailedMergeStatus === 'can_be_merged' || detailedMergeStatus === 'mergeable') {
+      // Some responses include stale failed pipeline values while merge status is explicitly healthy.
+      return false;
+    }
+
+    return true;
+  }
+
+  private toCiStatus(normalizedCiStatus: string, details?: MergeRequestDetails): CiStatus {
+    if (!normalizedCiStatus) {
+      return 'unknown';
+    }
+
+    if (normalizedCiStatus === 'failed') {
+      return this.isCiFailedStatus(normalizedCiStatus, details) ? 'failed' : 'unknown';
+    }
+
+    if (normalizedCiStatus === 'success') {
+      return 'success';
+    }
+    if (normalizedCiStatus === 'running') {
+      return 'running';
+    }
+    if (normalizedCiStatus === 'pending') {
+      return 'pending';
+    }
+    if (normalizedCiStatus === 'canceled') {
+      return 'canceled';
+    }
+    if (normalizedCiStatus === 'skipped') {
+      return 'skipped';
+    }
+    if (normalizedCiStatus === 'manual') {
+      return 'manual';
+    }
+    if (normalizedCiStatus === 'scheduled') {
+      return 'scheduled';
+    }
+    if (normalizedCiStatus === 'created') {
+      return 'created';
+    }
+    if (normalizedCiStatus === 'preparing') {
+      return 'preparing';
+    }
+    if (normalizedCiStatus === 'waiting_for_resource') {
+      return 'waiting_for_resource';
+    }
+
+    return 'unknown';
   }
 
   private hasMergeConflict(mergeRequest: MergeRequest, details?: MergeRequestDetails): boolean {
@@ -333,17 +428,13 @@ export class GitLabClient {
         const reviewerChecks = options?.includeReviewerChecks
           ? await this.buildReviewerMergeRequestChecks(mergeRequest, currentUserId, latestCommitAt)
           : undefined;
-        const normalizedCiStatus = ownMrChecks
-          ? ownMrChecks.isCiFailed
-            ? 'failed'
-            : ownMrChecks.isCiSuccessful
-              ? 'success'
-              : this.getNormalizedCiStatus(mergeRequest, details)
-          : this.getNormalizedCiStatus(mergeRequest, details);
+        const ciStatus = ownMrChecks?.ciStatus ?? this.toCiStatus(this.getNormalizedCiStatus(mergeRequest, details), details);
+        const hasFailedCi = ciStatus === 'failed';
 
         return {
           mergeRequest,
-          hasFailedCi: normalizedCiStatus === 'failed',
+          ciStatus,
+          hasFailedCi,
           hasConflicts: this.hasMergeConflict(mergeRequest, details),
           hasPendingApprovals: approvalsRequired > approvedCount,
           isCreatedByMe,

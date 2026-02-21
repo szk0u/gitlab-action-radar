@@ -21,8 +21,14 @@ export interface MergeRequest {
   pipeline?: {
     status: string;
   };
+  reviewers?: MergeRequestReviewer[];
   approvals_required?: number;
   approved_by?: Array<{ user: { id: number; name: string } }>;
+}
+
+export interface MergeRequestReviewer {
+  id: number;
+  state?: string;
 }
 
 export interface GitLabUser {
@@ -33,6 +39,7 @@ export interface GitLabUser {
 
 export interface MergeRequestHealth {
   mergeRequest: MergeRequest;
+  ciStatus: CiStatus;
   hasFailedCi: boolean;
   hasConflicts: boolean;
   hasPendingApprovals: boolean;
@@ -59,6 +66,7 @@ export interface MergeRequestDetails {
   unresolved_discussions_count?: number;
   has_conflicts?: boolean;
   merge_status?: string;
+  detailed_merge_status?: string;
   head_pipeline?: {
     status?: string;
   };
@@ -70,8 +78,7 @@ export interface MergeRequestDetails {
 export interface OwnMergeRequestChecks {
   isApproved: boolean;
   hasUnresolvedComments: boolean;
-  isCiSuccessful: boolean;
-  isCiFailed: boolean;
+  ciStatus: CiStatus;
 }
 
 export interface MergeRequestNote {
@@ -91,6 +98,20 @@ export interface MergeRequestCommit {
 }
 
 export type ReviewerReviewStatus = 'needs_review' | 'waiting_for_author' | 'new';
+
+export type CiStatus =
+  | 'success'
+  | 'failed'
+  | 'running'
+  | 'pending'
+  | 'canceled'
+  | 'skipped'
+  | 'manual'
+  | 'scheduled'
+  | 'created'
+  | 'preparing'
+  | 'waiting_for_resource'
+  | 'unknown';
 
 export interface ReviewerMergeRequestChecks {
   reviewStatus: ReviewerReviewStatus;

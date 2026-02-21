@@ -21,6 +21,7 @@ function createAssignedHealth(
       has_conflicts: options?.hasConflicts === true,
       merge_status: options?.hasConflicts ? 'cannot_be_merged' : 'can_be_merged'
     },
+    ciStatus: options?.hasFailedCi === true ? 'failed' : 'success',
     hasFailedCi: options?.hasFailedCi === true,
     hasConflicts: options?.hasConflicts === true,
     hasPendingApprovals: false,
