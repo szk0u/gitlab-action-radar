@@ -6,6 +6,8 @@ export interface MergeRequest {
   web_url: string;
   state: string;
   updated_at?: string;
+  assignee?: GitLabUser | null;
+  assignees?: GitLabUser[];
   author?: {
     id: number;
     username: string;

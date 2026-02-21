@@ -57,6 +57,15 @@ function getProjectLabel(mergeRequest: MergeRequest): string {
   return `Project #${mergeRequest.project_id}`;
 }
 
+function getAssigneeLabel(mergeRequest: MergeRequest): string {
+  const assigneeNames = (mergeRequest.assignees ?? []).map((assignee) => assignee.name).filter(Boolean);
+  if (assigneeNames.length > 0) {
+    return [...new Set(assigneeNames)].join(', ');
+  }
+
+  return mergeRequest.assignee?.name ?? 'Unassigned';
+}
+
 function getCiStatusLabel(ciStatus: CiStatus): string {
   if (ciStatus === 'waiting_for_resource') {
     return 'waiting for resource';
@@ -232,6 +241,7 @@ function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
   }
 
   const { reviewStatus, reviewerLastCommentedAt, latestCommitAt, authorLastCommentedAt } = item.reviewerChecks;
+  const assigneeLabel = getAssigneeLabel(item.mergeRequest);
   const reviewStatusLabel =
     reviewStatus === 'needs_review'
       ? '要レビュー'
@@ -253,6 +263,7 @@ function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
           {hasMyComment ? 'Commented' : 'No comment'}
         </Badge>
       </div>
+      <p>担当者: {assigneeLabel}</p>
       <p>My last comment: {formatDateTime(reviewerLastCommentedAt)}</p>
       <p>Latest commit: {formatDateTime(latestCommitAt)}</p>
       <p>Author last comment: {formatDateTime(authorLastCommentedAt)}</p>
