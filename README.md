@@ -53,7 +53,8 @@ pnpm test
 
 ## 認証
 - PAT のみ対応
-- 画面の `Open PAT page` で GitLab の PAT 発行ページを開けます
+- 画面の `Open PAT Page` で GitLab の PAT 発行ページを開けます（`name=GitLab Action Radar` / `scopes=read_api` を自動付与）
+- 必要最小権限は `read_api`（API 読み取り専用）です
 - 画面の `Save PAT` で PAT を OS の安全ストア（macOS Keychain など）に保存し、次回起動時も利用できます
 - `VITE_GITLAB_TOKEN` は **開発時のみ** 初期値として利用されます（本番ビルドでは無視されます）
 - `VITE_GITLAB_PAT_ISSUE_URL` で PAT 発行ページ URL を上書きできます

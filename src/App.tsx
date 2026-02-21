@@ -22,14 +22,18 @@ const gitlabBaseUrl = import.meta.env.VITE_GITLAB_BASE_URL ?? 'https://gitlab.co
 const gitlabTokenFromEnvRaw = import.meta.env.VITE_GITLAB_TOKEN ?? '';
 const gitlabTokenFromEnv = import.meta.env.DEV ? gitlabTokenFromEnvRaw : '';
 const isGitlabTokenFromEnvBlocked = !import.meta.env.DEV && gitlabTokenFromEnvRaw.trim().length > 0;
-const gitlabTokenFromEnvBlockedMessage = 'VITE_GITLAB_TOKEN は開発時のみ有効です。PAT を安全ストアに保存してください。';
+const personalAccessTokenLabel = 'Personal Access Token (PAT)';
+const gitlabPatMinimumScope = 'read_api';
+const gitlabPatIssueTokenName = 'GitLab Action Radar';
+const gitlabTokenFromEnvBlockedMessage = `VITE_GITLAB_TOKEN は開発時のみ有効です。${personalAccessTokenLabel} を安全ストアに保存してください。`;
 const missingPatTokenMessage = isGitlabTokenFromEnvBlocked
-  ? 'PAT を保存してください。VITE_GITLAB_TOKEN は開発時のみ有効です。'
+  ? `${personalAccessTokenLabel} を保存してください。VITE_GITLAB_TOKEN は開発時のみ有効です。`
   : import.meta.env.DEV
-    ? 'PAT を保存するか、VITE_GITLAB_TOKEN を設定してください。'
-    : 'PAT を保存してください。';
-const gitlabPatIssueUrl =
+    ? `${personalAccessTokenLabel} を保存するか、VITE_GITLAB_TOKEN を設定してください。`
+    : `${personalAccessTokenLabel} を保存してください。`;
+const gitlabPatIssuePageBaseUrl =
   import.meta.env.VITE_GITLAB_PAT_ISSUE_URL ?? `${gitlabBaseUrl.replace(/\/$/, '')}/-/user_settings/personal_access_tokens`;
+const gitlabPatIssueUrl = buildGitlabPatIssueUrl(gitlabPatIssuePageBaseUrl, gitlabPatIssueTokenName, gitlabPatMinimumScope);
 const localStorageReviewReminderEnabledKey = 'review-reminder-enabled';
 const localStorageReviewReminderTimesKey = 'review-reminder-times';
 const localStorageReviewReminderLegacyTimeKey = 'review-reminder-time';
@@ -68,6 +72,17 @@ function toSafeHttpUrl(value: string): string | undefined {
     return url.toString();
   } catch {
     return undefined;
+  }
+}
+
+function buildGitlabPatIssueUrl(baseUrl: string, tokenName: string, scope: string): string {
+  try {
+    const url = new URL(baseUrl);
+    url.searchParams.set('name', tokenName);
+    url.searchParams.set('scopes', scope);
+    return url.toString();
+  } catch {
+    return baseUrl;
   }
 }
 
@@ -1092,7 +1107,7 @@ export function App() {
   const savePatToken = async () => {
     const token = patInput.trim();
     if (!token) {
-      setAuthMessage('PAT を入力してから保存してください。');
+      setAuthMessage(`${personalAccessTokenLabel} を入力してから保存してください。`);
       return;
     }
 
@@ -1106,9 +1121,9 @@ export function App() {
       setPatToken(token);
       setPatInput('');
       setHasSavedPatToken(true);
-      setAuthMessage('PAT を安全ストアに保存しました。');
+      setAuthMessage(`${personalAccessTokenLabel} を安全ストアに保存しました。`);
     } catch (err) {
-      setAuthMessage(`PAT の保存に失敗しました: ${toMessage(err)}`);
+      setAuthMessage(`${personalAccessTokenLabel} の保存に失敗しました: ${toMessage(err)}`);
     }
   };
 
@@ -1442,11 +1457,14 @@ export function App() {
                 <section className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                   <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                     <div>
-                      <p className="text-sm font-medium text-slate-700">GitLab PAT</p>
-                      <p className="text-xs text-slate-600">PATを安全ストアに保存して利用します。</p>
+                      <p className="text-sm font-medium text-slate-700">GitLab Personal Access Token (PAT)</p>
+                      <p className="text-xs text-slate-600">GitLab の Personal Access Token (PAT) を安全ストアに保存して利用します。</p>
+                      <p className="text-xs text-slate-600">
+                        必要最小権限: <span className="font-mono">{gitlabPatMinimumScope}</span>（API の読み取り専用）
+                      </p>
                     </div>
                     <Button type="button" variant="outline" onClick={openPatIssuePage}>
-                      Open PAT page
+                      Open PAT Page
                     </Button>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
@@ -1455,11 +1473,11 @@ export function App() {
                       value={patInput}
                       onChange={(event) => setPatInput(event.target.value)}
                       placeholder="glpat-..."
-                      aria-label="GitLab PAT"
+                      aria-label="GitLab Personal Access Token (PAT)"
                       className="sm:flex-1"
                     />
                     <Button type="button" onClick={() => void savePatToken()} disabled={authLoading}>
-                      Save PAT
+                      Save Token (PAT)
                     </Button>
                     <Button
                       type="button"
@@ -1467,13 +1485,13 @@ export function App() {
                       onClick={() => void clearSavedPatToken()}
                       disabled={authLoading || !hasSavedPatToken}
                     >
-                      Clear saved PAT
+                      Clear saved token
                     </Button>
                   </div>
                   {authMessage && <p className="text-sm text-slate-600">{authMessage}</p>}
-                  {hasSavedPatToken && <p className="text-sm text-slate-600">現在は安全ストアのPATを使用しています。</p>}
+                  {hasSavedPatToken && <p className="text-sm text-slate-600">現在は安全ストアの Personal Access Token (PAT) を使用しています。</p>}
                   {!hasSavedPatToken && gitlabTokenFromEnv && (
-                    <p className="text-sm text-slate-600">現在は環境変数のPATを使用しています。</p>
+                    <p className="text-sm text-slate-600">現在は環境変数の Personal Access Token (PAT) を使用しています。</p>
                   )}
                 </section>
 
