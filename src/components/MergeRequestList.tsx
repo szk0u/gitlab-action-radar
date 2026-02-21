@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 interface MergeRequestListProps {
   assignedItems: MergeRequestHealth[];
   reviewRequestedItems: MergeRequestHealth[];
-  ignoredAssignedMergeRequestIds?: number[];
+  ignoredAssignedAlerts?: IgnoredAssignedAlertDisplay[];
   loading?: boolean;
   error?: string;
   onOpenMergeRequest?: (url: string) => void | Promise<void>;
@@ -23,6 +23,12 @@ type AssignedStatusFilter = 'all' | 'conflicts' | 'failed_ci' | 'pending_approva
 interface TabNavigationRequest {
   tab: TabKey;
   nonce: number;
+}
+
+interface IgnoredAssignedAlertDisplay {
+  mergeRequestId: number;
+  ignoreConflicts: boolean;
+  ignoreFailedCi: boolean;
 }
 
 function getProjectLabel(mergeRequest: MergeRequest): string {
@@ -263,13 +269,23 @@ function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
 function renderMergeRequestItem(
   item: MergeRequestHealth,
   tabKey: TabKey,
-  isIgnoredAssignedUntilNewCommit: boolean,
+  ignoredAssignedAlert: IgnoredAssignedAlertDisplay | undefined,
   onOpenMergeRequest?: (url: string) => void | Promise<void>,
   onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void
 ) {
   const { mergeRequest, ciStatus, hasFailedCi, hasConflicts, hasPendingApprovals } = item;
+  const isIgnoredConflict = tabKey === 'assigned' && ignoredAssignedAlert?.ignoreConflicts === true && hasConflicts;
+  const isIgnoredFailedCi = tabKey === 'assigned' && ignoredAssignedAlert?.ignoreFailedCi === true && hasFailedCi;
+  const isIgnoredAssignedUntilNewCommit = isIgnoredConflict || isIgnoredFailedCi;
   const isAtRisk = hasFailedCi || hasConflicts || hasPendingApprovals;
   const canIgnoreUntilNewCommit = tabKey === 'assigned' && (hasConflicts || hasFailedCi) && !!onIgnoreAssignedUntilNewCommit;
+  const ignoreButtonLabel = isIgnoredConflict && isIgnoredFailedCi
+    ? '競合・CI失敗を無視中（新コミットで解除）'
+    : isIgnoredConflict
+      ? '競合を無視中（新コミットで解除）'
+      : isIgnoredFailedCi
+        ? 'CI失敗を無視中（新コミットで解除）'
+        : '新しいコミットまで無視';
 
   return (
     <li key={mergeRequest.id}>
@@ -309,7 +325,8 @@ function renderMergeRequestItem(
               {hasConflicts ? 'Conflicts' : 'No conflicts'}
             </Badge>
             {hasPendingApprovals && <Badge variant="secondary">Pending approvals</Badge>}
-            {isIgnoredAssignedUntilNewCommit && <Badge variant="secondary">Ignored until new commit</Badge>}
+            {isIgnoredConflict && <Badge variant="secondary">Conflicts ignored</Badge>}
+            {isIgnoredFailedCi && <Badge variant="secondary">CI failure ignored</Badge>}
             {!isAtRisk && <Badge variant="outline">Healthy</Badge>}
           </div>
           {canIgnoreUntilNewCommit && (
@@ -322,7 +339,7 @@ function renderMergeRequestItem(
                   'cursor-pointer text-xs transition-opacity hover:opacity-90'
                 )}
               >
-                {isIgnoredAssignedUntilNewCommit ? '無視中（新コミットで解除）' : '新しいコミットまで無視'}
+                {ignoreButtonLabel}
               </button>
             </div>
           )}
@@ -338,7 +355,7 @@ function renderList(
   items: MergeRequestHealth[],
   emptyMessage: string,
   tabKey: TabKey,
-  ignoredAssignedMergeRequestIdSet: ReadonlySet<number>,
+  ignoredAssignedAlertMap: ReadonlyMap<number, IgnoredAssignedAlertDisplay>,
   onOpenMergeRequest?: (url: string) => void | Promise<void>,
   onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void
 ) {
@@ -356,7 +373,7 @@ function renderList(
         renderMergeRequestItem(
           item,
           tabKey,
-          tabKey === 'assigned' && ignoredAssignedMergeRequestIdSet.has(item.mergeRequest.id),
+          tabKey === 'assigned' ? ignoredAssignedAlertMap.get(item.mergeRequest.id) : undefined,
           onOpenMergeRequest,
           onIgnoreAssignedUntilNewCommit
         )
@@ -368,7 +385,7 @@ function renderList(
 export function MergeRequestList({
   assignedItems,
   reviewRequestedItems,
-  ignoredAssignedMergeRequestIds,
+  ignoredAssignedAlerts,
   loading,
   error,
   onOpenMergeRequest,
@@ -378,9 +395,9 @@ export function MergeRequestList({
   const [activeTab, setActiveTab] = useState<TabKey>('assigned');
   const [assignedStatusFilter, setAssignedStatusFilter] = useState<AssignedStatusFilter>('all');
   const [reviewStatusFilter, setReviewStatusFilter] = useState<ReviewStatusFilter>('all');
-  const ignoredAssignedMergeRequestIdSet = useMemo(
-    () => new Set(ignoredAssignedMergeRequestIds ?? []),
-    [ignoredAssignedMergeRequestIds]
+  const ignoredAssignedAlertMap = useMemo(
+    () => new Map((ignoredAssignedAlerts ?? []).map((entry) => [entry.mergeRequestId, entry])),
+    [ignoredAssignedAlerts]
   );
   const filteredAssignedItems = useMemo(
     () => assignedItems.filter((item) => matchesAssignedStatusFilter(item, assignedStatusFilter)),
@@ -546,7 +563,7 @@ export function MergeRequestList({
             filteredAssignedItems,
             assignedListEmptyMessage,
             'assigned',
-            ignoredAssignedMergeRequestIdSet,
+            ignoredAssignedAlertMap,
             onOpenMergeRequest,
             onIgnoreAssignedUntilNewCommit
           )}
@@ -597,7 +614,7 @@ export function MergeRequestList({
           filteredReviewRequestedItems,
           reviewListEmptyMessage,
           'review',
-          ignoredAssignedMergeRequestIdSet,
+          ignoredAssignedAlertMap,
           onOpenMergeRequest,
           onIgnoreAssignedUntilNewCommit
         )}

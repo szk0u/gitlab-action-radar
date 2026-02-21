@@ -12,6 +12,7 @@ import { Input } from './components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
 import { AssignedAlertSnapshot, AssignedAlertDiff, buildAssignedAlertSnapshot, detectAssignedAlertDiff } from './lib/assignedAlertDiff';
 import {
+  ActiveIgnoredAssignedSignals,
   IgnoredAssignedAlertState,
   applyIgnoredAssignedAlertsUntilNewCommit,
   toCommitSignature
@@ -186,6 +187,8 @@ interface AssignedAlertSnapshotEntry {
 interface IgnoredAssignedAlertEntry {
   mergeRequestId: number;
   commitSignature: string;
+  ignoreConflicts: boolean;
+  ignoreFailedCi: boolean;
 }
 
 function normalizeSettingsUserId(value: unknown): number | undefined {
@@ -278,10 +281,19 @@ function normalizeIgnoredAssignedAlertEntries(rawEntries: unknown): IgnoredAssig
     if (typeof entry.mergeRequestId !== 'number' || !Number.isInteger(entry.mergeRequestId) || entry.mergeRequestId <= 0) {
       continue;
     }
+    const hasIgnoreConflicts = typeof entry.ignoreConflicts === 'boolean';
+    const hasIgnoreFailedCi = typeof entry.ignoreFailedCi === 'boolean';
+    const ignoreConflicts = hasIgnoreConflicts ? entry.ignoreConflicts === true : !hasIgnoreFailedCi;
+    const ignoreFailedCi = hasIgnoreFailedCi ? entry.ignoreFailedCi === true : !hasIgnoreConflicts;
+    if (!ignoreConflicts && !ignoreFailedCi) {
+      continue;
+    }
 
     deduped.set(entry.mergeRequestId, {
       mergeRequestId: entry.mergeRequestId,
-      commitSignature: typeof entry.commitSignature === 'string' ? entry.commitSignature : 'no-commit'
+      commitSignature: typeof entry.commitSignature === 'string' ? entry.commitSignature : 'no-commit',
+      ignoreConflicts,
+      ignoreFailedCi
     });
   }
 
@@ -313,7 +325,9 @@ function restoreIgnoredAssignedAlerts(entries: IgnoredAssignedAlertEntry[]): Map
   const state = new Map<number, IgnoredAssignedAlertState>();
   for (const entry of entries) {
     state.set(entry.mergeRequestId, {
-      commitSignature: entry.commitSignature
+      commitSignature: entry.commitSignature,
+      ignoreConflicts: entry.ignoreConflicts,
+      ignoreFailedCi: entry.ignoreFailedCi
     });
   }
   return state;
@@ -324,8 +338,34 @@ function serializeIgnoredAssignedAlerts(snapshot: ReadonlyMap<number, IgnoredAss
     .sort((left, right) => left[0] - right[0])
     .map(([mergeRequestId, value]) => ({
       mergeRequestId,
-      commitSignature: value.commitSignature
+      commitSignature: value.commitSignature,
+      ignoreConflicts: value.ignoreConflicts === true,
+      ignoreFailedCi: value.ignoreFailedCi === true
     }));
+}
+
+function suppressIgnoredAssignedSignals(
+  items: MergeRequestHealth[],
+  activeIgnoredSignals: ReadonlyMap<number, ActiveIgnoredAssignedSignals>
+): MergeRequestHealth[] {
+  return items.map((item) => {
+    const activeIgnored = activeIgnoredSignals.get(item.mergeRequest.id);
+    if (!activeIgnored) {
+      return item;
+    }
+
+    const nextHasConflicts = activeIgnored.ignoreConflicts ? false : item.hasConflicts;
+    const nextHasFailedCi = activeIgnored.ignoreFailedCi ? false : item.hasFailedCi;
+    if (nextHasConflicts === item.hasConflicts && nextHasFailedCi === item.hasFailedCi) {
+      return item;
+    }
+
+    return {
+      ...item,
+      hasConflicts: nextHasConflicts,
+      hasFailedCi: nextHasFailedCi
+    };
+  });
 }
 
 interface AppSettingsPayload {
@@ -676,8 +716,13 @@ export function App() {
 
     return new GitLabClient({ baseUrl: gitlabBaseUrl, token: patToken });
   }, [patToken]);
-  const ignoredAssignedMergeRequestIds = useMemo(
-    () => ignoredAssignedAlertEntries.map((entry) => entry.mergeRequestId),
+  const ignoredAssignedAlerts = useMemo(
+    () =>
+      ignoredAssignedAlertEntries.map((entry) => ({
+        mergeRequestId: entry.mergeRequestId,
+        ignoreConflicts: entry.ignoreConflicts,
+        ignoreFailedCi: entry.ignoreFailedCi
+      })),
     [ignoredAssignedAlertEntries]
   );
 
@@ -1201,9 +1246,9 @@ export function App() {
         ? ignoredAssignedAlertsRef.current
         : new Map<number, IgnoredAssignedAlertState>();
       const appliedIgnoredAssignedAlerts = applyIgnoredAssignedAlertsUntilNewCommit(rawAssignedSignals, previousIgnoredAssignedAlerts);
-      const ignoredAssignedMergeRequestIds = appliedIgnoredAssignedAlerts.ignoredMergeRequestIds;
-      const actionableAssignedSignals = rawAssignedSignals.filter(
-        (item) => !ignoredAssignedMergeRequestIds.has(item.mergeRequest.id)
+      const actionableAssignedSignals = suppressIgnoredAssignedSignals(
+        rawAssignedSignals,
+        appliedIgnoredAssignedAlerts.activeIgnoredSignals
       );
       const nextIgnoredAssignedAlerts = appliedIgnoredAssignedAlerts.nextState;
 
@@ -1262,7 +1307,9 @@ export function App() {
 
     const nextIgnoredAssignedAlerts = new Map(ignoredAssignedAlertsRef.current);
     nextIgnoredAssignedAlerts.set(mergeRequestId, {
-      commitSignature: toCommitSignature(target.latestCommitAt)
+      commitSignature: toCommitSignature(target.latestCommitAt),
+      ignoreConflicts: target.hasConflicts,
+      ignoreFailedCi: target.hasFailedCi
     });
     ignoredAssignedAlertsRef.current = nextIgnoredAssignedAlerts;
     setIgnoredAssignedAlertEntries(serializeIgnoredAssignedAlerts(nextIgnoredAssignedAlerts));
@@ -1273,7 +1320,11 @@ export function App() {
       setIgnoredAssignedAlertsUserId(currentUserId);
     }
 
-    const actionableAssignedItems = assignedItems.filter((item) => !nextIgnoredAssignedAlerts.has(item.mergeRequest.id));
+    const previewAppliedIgnoredAssignedAlerts = applyIgnoredAssignedAlertsUntilNewCommit(assignedItems, nextIgnoredAssignedAlerts);
+    const actionableAssignedItems = suppressIgnoredAssignedSignals(
+      assignedItems,
+      previewAppliedIgnoredAssignedAlerts.activeIgnoredSignals
+    );
     void updateTrayIndicator(summarizeTrayIndicator(actionableAssignedItems, reviewRequestedItems));
   }, [assignedItems, reviewRequestedItems, updateTrayIndicator]);
 
@@ -1444,7 +1495,7 @@ export function App() {
                 <MergeRequestList
                   assignedItems={assignedItems}
                   reviewRequestedItems={reviewRequestedItems}
-                  ignoredAssignedMergeRequestIds={ignoredAssignedMergeRequestIds}
+                  ignoredAssignedAlerts={ignoredAssignedAlerts}
                   loading={loading}
                   error={error}
                   onOpenMergeRequest={openExternalUrl}
