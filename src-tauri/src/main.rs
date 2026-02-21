@@ -229,6 +229,25 @@ fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn toggle_main_window_from_tray(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let is_visible = window.is_visible().unwrap_or(false);
+        if !is_visible {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+            return;
+        }
+
+        if window.is_focused().unwrap_or(false) {
+            let _ = window.hide();
+        } else {
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }
+}
+
 #[tauri::command]
 fn send_clickable_notification(
     app: tauri::AppHandle,
@@ -348,14 +367,7 @@ fn main() {
                         ..
                     } = event
                     {
-                        if let Some(window) = tray.app_handle().get_webview_window("main") {
-                            if window.is_visible().unwrap_or(false) {
-                                let _ = window.hide();
-                            } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        }
+                        toggle_main_window_from_tray(&tray.app_handle());
                     }
                 })
                 .on_menu_event(|app, event| {
@@ -367,9 +379,11 @@ fn main() {
 
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.hide();
-                window.on_window_event(|event| {
+                let window_for_events = window.clone();
+                window.on_window_event(move |event| {
                     if let WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
+                        let _ = window_for_events.hide();
                     }
                 });
             }
