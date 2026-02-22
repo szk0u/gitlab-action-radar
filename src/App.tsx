@@ -815,6 +815,7 @@ export function App() {
 
         if (storedToken && storedToken.trim()) {
           setPatToken(storedToken);
+          setPatInput(storedToken);
           setHasSavedPatToken(true);
           setAuthMessage('保存済みPATを安全ストアから読み込みました。');
         } else {
@@ -1164,7 +1165,7 @@ export function App() {
     try {
       await invoke('save_pat', { token });
       setPatToken(token);
-      setPatInput('');
+      setPatInput(token);
       setHasSavedPatToken(true);
       setAuthMessage(`${personalAccessTokenLabel} を安全ストアに保存しました。`);
     } catch (err) {
