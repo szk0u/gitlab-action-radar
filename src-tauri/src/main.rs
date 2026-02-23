@@ -158,7 +158,16 @@ fn save_pat(token: String) -> Result<(), String> {
     let entry = keyring_entry()?;
     entry
         .set_password(trimmed)
-        .map_err(|err| format!("failed to store PAT: {err}"))
+        .map_err(|err| format!("failed to store PAT: {err}"))?;
+
+    let stored = entry
+        .get_password()
+        .map_err(|err| format!("failed to verify stored PAT: {err}"))?;
+    if stored != trimmed {
+        return Err("stored PAT verification mismatch".to_string());
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
