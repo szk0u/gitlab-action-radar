@@ -22,14 +22,6 @@ struct TrayIndicatorPayload {
     actionable_total_count: u32,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ClickableNotificationPayload {
-    title: String,
-    body: String,
-    open_tab: String,
-}
-
 fn pending_notification_tab_slot() -> &'static Mutex<Option<String>> {
     static SLOT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
     SLOT.get_or_init(|| Mutex::new(None))
@@ -258,48 +250,16 @@ fn toggle_main_window_from_tray(app: &tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn send_clickable_notification(
+fn handle_notification_action(
     app: tauri::AppHandle,
-    payload: ClickableNotificationPayload,
+    open_tab: String,
 ) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        let app_handle = app.clone();
-        let app_identifier = app.config().identifier.clone();
-        std::thread::spawn(move || {
-            let _ = mac_notification_sys::set_application(&app_identifier);
-            let mut notification = mac_notification_sys::Notification::new();
-            notification
-                .title(&payload.title)
-                .message(&payload.body)
-                .main_button(mac_notification_sys::MainButton::SingleAction("Open"))
-                .close_button("Dismiss")
-                .wait_for_click(true)
-                .asynchronous(false);
-
-            let response = notification.send();
-            if matches!(
-                response,
-                Ok(mac_notification_sys::NotificationResponse::Click)
-                    | Ok(mac_notification_sys::NotificationResponse::ActionButton(_))
-            ) {
-                let _ = show_main_window(app_handle.clone());
-                if payload.open_tab == "assigned" || payload.open_tab == "review" {
-                    let open_tab = payload.open_tab.clone();
-                    set_pending_notification_tab(open_tab.clone());
-                    let _ = app_handle.emit(NOTIFICATION_OPEN_TAB_EVENT, open_tab.clone());
-                }
-            }
-        });
-        return Ok(());
+    let _ = show_main_window(app.clone());
+    if open_tab == "assigned" || open_tab == "review" {
+        set_pending_notification_tab(open_tab.clone());
+        let _ = app.emit(NOTIFICATION_OPEN_TAB_EVENT, open_tab);
     }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = app;
-        let _ = payload;
-        Err("clickable notifications are only supported on macOS".to_string())
-    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -355,7 +315,7 @@ fn main() {
             open_external_url,
             open_notification_settings,
             show_main_window,
-            send_clickable_notification,
+            handle_notification_action,
             take_pending_notification_tab,
             update_tray_indicator
         ])

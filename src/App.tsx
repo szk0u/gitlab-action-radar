@@ -1,6 +1,11 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { requestPermission as requestNotificationPermissionApi, sendNotification } from '@tauri-apps/plugin-notification';
+import {
+  requestPermission as requestNotificationPermissionApi,
+  sendNotification,
+  registerActionTypes,
+  onAction
+} from '@tauri-apps/plugin-notification';
 import { Store } from '@tauri-apps/plugin-store';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -1011,6 +1016,52 @@ export function App() {
   }, [requestTabNavigation]);
 
   useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+
+    let alive = true;
+    let unlistenAction: (() => void) | undefined;
+
+    const setup = async () => {
+      try {
+        await registerActionTypes([{
+          id: 'open-tab',
+          actions: [{ id: 'open', title: 'Open', foreground: true }]
+        }]);
+      } catch {
+        // Action type registration may fail on some platforms; continue anyway.
+      }
+
+      try {
+        const listener = await onAction((notification) => {
+          const openTab = (notification.extra as Record<string, unknown> | undefined)?.openTab;
+          if (typeof openTab === 'string' && (openTab === 'assigned' || openTab === 'review')) {
+            void invoke('handle_notification_action', { openTab });
+            requestTabNavigation(openTab);
+          }
+        });
+        if (!alive) {
+          listener.unregister();
+          return;
+        }
+        unlistenAction = () => listener.unregister();
+      } catch {
+        // Ignore listener registration failure.
+      }
+    };
+
+    void setup();
+
+    return () => {
+      alive = false;
+      if (unlistenAction) {
+        unlistenAction();
+      }
+    };
+  }, [requestTabNavigation]);
+
+  useEffect(() => {
     if (!isTauriRuntime() || typeof window === 'undefined') {
       return;
     }
@@ -1032,19 +1083,11 @@ export function App() {
   }, [consumePendingNotificationTab]);
 
   const sendClickableNotification = useCallback(async (options: { title: string; body: string; openTab: TabKey }) => {
-    if (isTauriRuntime()) {
-      try {
-        await invoke('send_clickable_notification', { payload: options });
-        return;
-      } catch (err) {
-        console.error('Failed to send clickable notification via backend command:', err);
-        // Fall back to standard notifications below.
-      }
-    }
-
     sendNotification({
       title: options.title,
-      body: options.body
+      body: options.body,
+      actionTypeId: 'open-tab',
+      extra: { openTab: options.openTab }
     });
   }, []);
 
