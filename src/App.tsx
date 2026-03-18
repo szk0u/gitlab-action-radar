@@ -1039,6 +1039,8 @@ export function App() {
           if (typeof openTab === 'string' && (openTab === 'assigned' || openTab === 'review')) {
             void invoke('handle_notification_action', { openTab });
             requestTabNavigation(openTab);
+          } else {
+            void invoke('show_main_window');
           }
         });
         if (!alive) {
@@ -1106,7 +1108,8 @@ export function App() {
     try {
       sendNotification({
         title: 'GitLab Action Radar',
-        body: 'テスト通知です。通知一覧に表示されるか確認してください。'
+        body: 'テスト通知です。通知一覧に表示されるか確認してください。',
+        actionTypeId: 'open-tab'
       });
       setReviewReminderMessage('テスト通知を送信しました。');
     } catch (err) {
