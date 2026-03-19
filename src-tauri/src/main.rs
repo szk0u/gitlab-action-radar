@@ -6,12 +6,15 @@ use std::sync::{Mutex, OnceLock};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{image::Image, Emitter, Manager, WindowEvent};
+use tauri_plugin_store::StoreExt;
 use url::Url;
 
 const KEYRING_SERVICE: &str = "gitlab-action-radar";
 const KEYRING_ACCOUNT: &str = "gitlab-pat";
 const TRAY_ID: &str = "main-tray";
 const NOTIFICATION_OPEN_TAB_EVENT: &str = "notification-open-tab";
+const APP_SETTINGS_STORE_PATH: &str = "app-settings.json";
+const APP_SETTINGS_STORE_KEY: &str = "settings";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +23,12 @@ struct TrayIndicatorPayload {
     failed_ci_count: u32,
     review_pending_count: u32,
     actionable_total_count: u32,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AppSettingsPayload {
+    show_in_command_tab: Option<bool>,
 }
 
 fn pending_notification_tab_slot() -> &'static Mutex<Option<String>> {
@@ -140,6 +149,33 @@ fn keyring_entry() -> Result<Entry, String> {
         .map_err(|err| format!("failed to access secure storage: {err}"))
 }
 
+#[cfg(target_os = "macos")]
+fn resolve_show_in_command_tab(app: &tauri::AppHandle) -> bool {
+    app.store(APP_SETTINGS_STORE_PATH)
+        .ok()
+        .and_then(|store| store.get(APP_SETTINGS_STORE_KEY))
+        .and_then(|value| serde_json::from_value::<AppSettingsPayload>(value).ok())
+        .and_then(|settings| settings.show_in_command_tab)
+        .unwrap_or(true)
+}
+
+#[cfg(target_os = "macos")]
+fn apply_command_tab_visibility(app: &tauri::AppHandle, visible: bool) -> Result<(), String> {
+    let activation_policy = if visible {
+        tauri::ActivationPolicy::Regular
+    } else {
+        tauri::ActivationPolicy::Accessory
+    };
+
+    app.set_activation_policy(activation_policy)
+        .map_err(|err| format!("failed to update activation policy: {err}"))
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply_command_tab_visibility(_app: &tauri::AppHandle, _visible: bool) -> Result<(), String> {
+    Ok(())
+}
+
 #[tauri::command]
 fn save_pat(token: String) -> Result<(), String> {
     let trimmed = token.trim();
@@ -216,6 +252,11 @@ fn open_notification_settings() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_command_tab_visibility(app: tauri::AppHandle, visible: bool) -> Result<(), String> {
+    apply_command_tab_visibility(&app, visible)
+}
+
+#[tauri::command]
 fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
     let window = app
         .get_webview_window("main")
@@ -250,10 +291,7 @@ fn toggle_main_window_from_tray(app: &tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn handle_notification_action(
-    app: tauri::AppHandle,
-    open_tab: String,
-) -> Result<(), String> {
+fn handle_notification_action(app: tauri::AppHandle, open_tab: String) -> Result<(), String> {
     let _ = show_main_window(app.clone());
     if open_tab == "assigned" || open_tab == "review" {
         set_pending_notification_tab(open_tab.clone());
@@ -314,12 +352,19 @@ fn main() {
             clear_pat,
             open_external_url,
             open_notification_settings,
+            set_command_tab_visibility,
             show_main_window,
             handle_notification_action,
             take_pending_notification_tab,
             update_tray_indicator
         ])
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            let _ = apply_command_tab_visibility(
+                app.handle(),
+                resolve_show_in_command_tab(app.handle()),
+            );
+
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&quit_item])?;
 

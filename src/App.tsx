@@ -46,6 +46,7 @@ const localStorageReviewReminderLegacyTimeKey = 'review-reminder-time';
 const localStorageReviewReminderNotifiedSlotsKey = 'review-reminder-notified-slots';
 const localStorageAutoPollingEnabledKey = 'auto-polling-enabled';
 const localStorageAutoPollingIntervalMinutesKey = 'auto-polling-interval-minutes';
+const localStorageShowInCommandTabKey = 'show-in-command-tab';
 const localStorageAssignedAlertSnapshotKey = 'assigned-alert-snapshot';
 const localStorageAssignedAlertSnapshotInitializedKey = 'assigned-alert-snapshot-initialized';
 const localStorageAssignedAlertSnapshotUserIdKey = 'assigned-alert-snapshot-user-id';
@@ -181,6 +182,14 @@ function parseAutoPollingIntervalMinutes(value: string | null): number {
 
   const parsed = Number(value);
   return normalizePollingIntervalMinutes(parsed);
+}
+
+function parseShowInCommandTab(value: string | null): boolean {
+  if (value == null) {
+    return true;
+  }
+
+  return value === 'true';
 }
 
 interface AssignedAlertSnapshotEntry {
@@ -379,6 +388,7 @@ interface AppSettingsPayload {
   notifiedReviewReminderSlots?: string[];
   autoPollingEnabled?: boolean;
   autoPollingIntervalMinutes?: number;
+  showInCommandTab?: boolean;
   assignedAlertSnapshot?: AssignedAlertSnapshotEntry[];
   assignedAlertSnapshotInitialized?: boolean;
   assignedAlertSnapshotUserId?: number;
@@ -392,6 +402,7 @@ interface AppSettings {
   notifiedReviewReminderSlots: string[];
   autoPollingEnabled: boolean;
   autoPollingIntervalMinutes: number;
+  showInCommandTab: boolean;
   assignedAlertSnapshot: AssignedAlertSnapshotEntry[];
   assignedAlertSnapshotInitialized: boolean;
   assignedAlertSnapshotUserId?: number;
@@ -429,6 +440,7 @@ function normalizeAppSettings(payload: AppSettingsPayload | null | undefined): A
     notifiedReviewReminderSlots: notifiedSlots,
     autoPollingEnabled: payload?.autoPollingEnabled == null ? true : payload.autoPollingEnabled === true,
     autoPollingIntervalMinutes: normalizePollingIntervalMinutes(payload?.autoPollingIntervalMinutes ?? defaultAutoPollingIntervalMinutes),
+    showInCommandTab: payload?.showInCommandTab == null ? true : payload.showInCommandTab === true,
     assignedAlertSnapshot,
     assignedAlertSnapshotInitialized,
     assignedAlertSnapshotUserId,
@@ -448,6 +460,7 @@ function loadLegacyLocalStorageSettings(): AppSettings {
   const notifiedSlotsValue = window.localStorage.getItem(localStorageReviewReminderNotifiedSlotsKey);
   const autoPollingEnabledValue = window.localStorage.getItem(localStorageAutoPollingEnabledKey);
   const autoPollingIntervalMinutesValue = window.localStorage.getItem(localStorageAutoPollingIntervalMinutesKey);
+  const showInCommandTabValue = window.localStorage.getItem(localStorageShowInCommandTabKey);
   const assignedAlertSnapshotValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotKey);
   const assignedAlertSnapshotInitializedValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotInitializedKey);
   const assignedAlertSnapshotUserIdValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotUserIdKey);
@@ -464,6 +477,7 @@ function loadLegacyLocalStorageSettings(): AppSettings {
     notifiedReviewReminderSlots: parseNotifiedSlots(notifiedSlotsValue),
     autoPollingEnabled: autoPollingEnabledValue == null ? true : autoPollingEnabledValue === 'true',
     autoPollingIntervalMinutes: parseAutoPollingIntervalMinutes(autoPollingIntervalMinutesValue),
+    showInCommandTab: parseShowInCommandTab(showInCommandTabValue),
     assignedAlertSnapshot: assignedAlertSnapshotInitialized ? parseAssignedAlertSnapshotEntries(assignedAlertSnapshotValue) : [],
     assignedAlertSnapshotInitialized,
     assignedAlertSnapshotUserId,
@@ -482,6 +496,7 @@ function saveSettingsToLegacyLocalStorage(settings: AppSettings): void {
   window.localStorage.setItem(localStorageReviewReminderNotifiedSlotsKey, JSON.stringify(settings.notifiedReviewReminderSlots));
   window.localStorage.setItem(localStorageAutoPollingEnabledKey, String(settings.autoPollingEnabled));
   window.localStorage.setItem(localStorageAutoPollingIntervalMinutesKey, String(settings.autoPollingIntervalMinutes));
+  window.localStorage.setItem(localStorageShowInCommandTabKey, String(settings.showInCommandTab));
   window.localStorage.setItem(localStorageAssignedAlertSnapshotKey, JSON.stringify(settings.assignedAlertSnapshot));
   window.localStorage.setItem(localStorageIgnoredAssignedAlertsKey, JSON.stringify(settings.ignoredAssignedAlerts));
   window.localStorage.setItem(
@@ -556,6 +571,14 @@ function getNotificationPermissionLabel(permission: NotificationPermissionState)
     return '未選択';
   }
   return '非対応環境';
+}
+
+function isMacOs(): boolean {
+  if (typeof navigator === 'undefined') {
+    return false;
+  }
+
+  return /Mac/i.test(navigator.userAgent) || /Mac/i.test(navigator.platform ?? '');
 }
 
 function summarizeReviewStatusCounts(items: MergeRequestHealth[]): ReviewStatusCounts {
@@ -673,6 +696,7 @@ export function App() {
   );
   const [autoPollingEnabled, setAutoPollingEnabled] = useState(true);
   const [autoPollingIntervalMinutes, setAutoPollingIntervalMinutes] = useState(defaultAutoPollingIntervalMinutes);
+  const [showInCommandTab, setShowInCommandTab] = useState(true);
   const [assignedAlertSnapshotEntries, setAssignedAlertSnapshotEntries] = useState<AssignedAlertSnapshotEntry[]>([]);
   const [assignedAlertSnapshotInitialized, setAssignedAlertSnapshotInitialized] = useState(false);
   const [assignedAlertSnapshotUserId, setAssignedAlertSnapshotUserId] = useState<number | undefined>();
@@ -688,6 +712,7 @@ export function App() {
   const ignoredAssignedAlertsUserIdRef = useRef<number | undefined>(undefined);
   const settingsStoreRef = useRef<Store | null>(null);
   const lastPersistedSettingsRef = useRef<string | null>(null);
+  const supportsCommandTabVisibilitySetting = isTauriRuntime() && isMacOs();
   const getSettingsStore = useCallback(async (): Promise<Store> => {
     if (settingsStoreRef.current) {
       return settingsStoreRef.current;
@@ -744,6 +769,7 @@ export function App() {
       setNotifiedReviewReminderSlots(settings.notifiedReviewReminderSlots);
       setAutoPollingEnabled(settings.autoPollingEnabled);
       setAutoPollingIntervalMinutes(settings.autoPollingIntervalMinutes);
+      setShowInCommandTab(settings.showInCommandTab);
       setAssignedAlertSnapshotEntries(settings.assignedAlertSnapshot);
       setAssignedAlertSnapshotInitialized(settings.assignedAlertSnapshotInitialized);
       setAssignedAlertSnapshotUserId(settings.assignedAlertSnapshotUserId);
@@ -1411,6 +1437,7 @@ export function App() {
       notifiedReviewReminderSlots,
       autoPollingEnabled,
       autoPollingIntervalMinutes: normalizePollingIntervalMinutes(autoPollingIntervalMinutes),
+      showInCommandTab,
       assignedAlertSnapshot: assignedAlertSnapshotEntries,
       assignedAlertSnapshotInitialized,
       assignedAlertSnapshotUserId,
@@ -1433,8 +1460,19 @@ export function App() {
     reviewReminderEnabled,
     reviewReminderTimes,
     saveAppSettings,
+    showInCommandTab,
     settingsLoaded
   ]);
+
+  useEffect(() => {
+    if (!settingsLoaded || !supportsCommandTabVisibilitySetting) {
+      return;
+    }
+
+    void invoke('set_command_tab_visibility', { visible: showInCommandTab }).catch(() => {
+      // Ignore OS integration failure and keep the current in-memory state.
+    });
+  }, [settingsLoaded, showInCommandTab, supportsCommandTabVisibilitySetting]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -1629,6 +1667,24 @@ export function App() {
                     （既定 {defaultAutoPollingIntervalMinutes} 分）。
                   </p>
                 </section>
+
+                {supportsCommandTabVisibilitySetting && (
+                  <section className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+                    <p className="text-sm font-medium text-slate-700">App visibility</p>
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={showInCommandTab}
+                        onChange={(event) => setShowInCommandTab(event.target.checked)}
+                        className="size-4"
+                      />
+                      Show this app in Command + Tab
+                    </label>
+                    <p className="text-xs text-slate-600">
+                      オフにするとメニューバー常駐のまま使えます。トレイ通知やトレイアイコンからは引き続き開けます。
+                    </p>
+                  </section>
+                )}
 
                 <section className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                   <p className="text-sm font-medium text-slate-700">Review reminder</p>
