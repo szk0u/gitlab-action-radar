@@ -30,7 +30,7 @@
     "lucide-react": "^0.574.0",
     "react": "latest",
     "react-dom": "latest",
-    "tailwind-merge": "^3.4.1"
+    "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
     "@storybook/addon-a11y": "10.3.3",
