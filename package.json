@@ -36,7 +36,7 @@
     "@storybook/addon-a11y": "10.3.3",
     "@storybook/addon-docs": "10.3.3",
     "@storybook/react-vite": "10.3.3",
-    "@tailwindcss/vite": "^4.1.18",
+    "@tailwindcss/vite": "^4.2.2",
     "@tauri-apps/cli": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
