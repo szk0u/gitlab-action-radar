@@ -32,6 +32,12 @@ pnpm tauri build
 pnpm test
 ```
 
+## Storybook
+```bash
+pnpm storybook
+pnpm build-storybook
+```
+
 ## 収集対象MR
 - 自分にアサインされている Open MR
 - 自分が reviewer に設定されている Open MR

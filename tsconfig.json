@@ -14,5 +14,5 @@
     "strict": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src", "__tests__", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "__tests__", ".storybook", "vite.config.ts", "vitest.config.ts"]
 }

@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
     "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -26,6 +28,9 @@
     "tailwind-merge": "^3.4.1"
   },
   "devDependencies": {
+    "@storybook/addon-a11y": "10.3.3",
+    "@storybook/addon-docs": "10.3.3",
+    "@storybook/react-vite": "10.3.3",
     "@tailwindcss/vite": "^4.1.18",
     "@tauri-apps/cli": "latest",
     "@types/node": "latest",
@@ -33,6 +38,7 @@
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
     "jsdom": "^28.1.0",
+    "storybook": "10.3.3",
     "tailwindcss": "^4.1.18",
     "typescript": "latest",
     "vite": "latest",
