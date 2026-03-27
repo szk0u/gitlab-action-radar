@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": [
+    "dist/**",
+    "storybook-static/**",
+    "coverage/**",
+    "node_modules/**",
+    "src-tauri/target/**",
+    "src-tauri/gen/**"
+  ]
+}

@@ -12,7 +12,7 @@ describe('GitLabClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ id: 99, username: 'me', name: 'Me' })
+        json: async () => ({ id: 99, username: 'me', name: 'Me' }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
@@ -26,7 +26,7 @@ describe('GitLabClient', () => {
               web_url: 'https://gitlab.com/group/project/-/merge_requests/10',
               state: 'opened',
               has_conflicts: false,
-              merge_status: 'can_be_merged'
+              merge_status: 'can_be_merged',
             },
             {
               id: 1,
@@ -36,9 +36,9 @@ describe('GitLabClient', () => {
               web_url: 'https://gitlab.com/group/project/-/merge_requests/10',
               state: 'opened',
               has_conflicts: false,
-              merge_status: 'can_be_merged'
-            }
-          ] satisfies MergeRequest[]
+              merge_status: 'can_be_merged',
+            },
+          ] satisfies MergeRequest[],
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
@@ -53,7 +53,7 @@ describe('GitLabClient', () => {
               state: 'opened',
               draft: true,
               has_conflicts: false,
-              merge_status: 'can_be_merged'
+              merge_status: 'can_be_merged',
             },
             {
               id: 3,
@@ -63,7 +63,7 @@ describe('GitLabClient', () => {
               web_url: 'https://gitlab.com/group/project/-/merge_requests/30',
               state: 'opened',
               has_conflicts: false,
-              merge_status: 'can_be_merged'
+              merge_status: 'can_be_merged',
             },
             {
               id: 4,
@@ -73,7 +73,7 @@ describe('GitLabClient', () => {
               web_url: 'https://gitlab.com/group/project/-/merge_requests/40',
               state: 'opened',
               has_conflicts: true,
-              merge_status: 'cannot_be_merged'
+              merge_status: 'cannot_be_merged',
             },
             {
               id: 5,
@@ -84,25 +84,25 @@ describe('GitLabClient', () => {
               state: 'opened',
               has_conflicts: false,
               merge_status: 'can_be_merged',
-              reviewers: [{ id: 99, state: 'reviewed' }]
-            }
-          ] satisfies MergeRequest[]
+              reviewers: [{ id: 99, state: 'reviewed' }],
+            },
+          ] satisfies MergeRequest[],
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           approved_by: [{ user: { id: 99, name: 'Me' } }],
           approved: true,
-          approvals_left: 0
-        })
+          approvals_left: 0,
+        }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           approved_by: [],
           approved: false,
-          approvals_left: 1
-        })
+          approvals_left: 1,
+        }),
       } as Response);
 
     const client = new GitLabClient({ baseUrl: 'https://gitlab.com/', token: 'token' });
@@ -111,27 +111,27 @@ describe('GitLabClient', () => {
     expect(mockFetch).toHaveBeenNthCalledWith(
       1,
       'https://gitlab.com/api/v4/user',
-      expect.objectContaining({ headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'token' }) })
+      expect.objectContaining({ headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'token' }) }),
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/merge_requests?scope=all&state=opened&assignee_id=99&per_page=100',
-      expect.any(Object)
+      expect.any(Object),
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/merge_requests?scope=all&state=opened&reviewer_id=99&per_page=100',
-      expect.any(Object)
+      expect.any(Object),
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/300/merge_requests/30/approvals',
-      expect.any(Object)
+      expect.any(Object),
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/400/merge_requests/40/approvals',
-      expect.any(Object)
+      expect.any(Object),
     );
     expect(mockFetch).not.toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/500/merge_requests/50/approvals',
-      expect.any(Object)
+      expect.any(Object),
     );
 
     expect(result.currentUserId).toBe(99);
@@ -143,7 +143,7 @@ describe('GitLabClient', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
       status: 401,
-      statusText: 'Unauthorized'
+      statusText: 'Unauthorized',
     } as Response);
 
     const client = new GitLabClient({ baseUrl: 'https://gitlab.com', token: 'bad-token' });
@@ -161,8 +161,8 @@ describe('GitLabClient', () => {
           json: async () => ({
             approved_by: [{ user: { id: 7, name: 'Reviewer' } }],
             approved: true,
-            approvals_left: 0
-          })
+            approvals_left: 0,
+          }),
         } as Response;
       }
 
@@ -172,8 +172,8 @@ describe('GitLabClient', () => {
           json: async () => ({
             blocking_discussions_resolved: false,
             unresolved_discussions_count: 2,
-            head_pipeline: { status: 'success' }
-          })
+            head_pipeline: { status: 'success' },
+          }),
         } as Response;
       }
 
@@ -184,8 +184,8 @@ describe('GitLabClient', () => {
             has_conflicts: true,
             merge_status: 'cannot_be_merged',
             detailed_merge_status: 'ci_must_pass',
-            head_pipeline: { status: 'failed' }
-          })
+            head_pipeline: { status: 'failed' },
+          }),
         } as Response;
       }
 
@@ -206,7 +206,7 @@ describe('GitLabClient', () => {
         merge_status: 'can_be_merged',
         pipeline: { status: 'failed' },
         approvals_required: 2,
-        approved_by: [{ user: { id: 7, name: 'Reviewer' } }]
+        approved_by: [{ user: { id: 7, name: 'Reviewer' } }],
       },
       {
         id: 2,
@@ -218,8 +218,8 @@ describe('GitLabClient', () => {
         author: { id: 123, username: 'other', name: 'Other' },
         has_conflicts: false,
         merge_status: 'can_be_merged',
-        pipeline: { status: 'success' }
-      }
+        pipeline: { status: 'success' },
+      },
     ];
 
     const signals = await client.buildHealthSignals(data, 99);
@@ -233,8 +233,8 @@ describe('GitLabClient', () => {
       ownMrChecks: {
         isApproved: true,
         hasUnresolvedComments: true,
-        ciStatus: 'success'
-      }
+        ciStatus: 'success',
+      },
     });
     expect(signals[1]).toMatchObject({
       ciStatus: 'failed',
@@ -242,20 +242,20 @@ describe('GitLabClient', () => {
       hasConflicts: true,
       hasPendingApprovals: false,
       isCreatedByMe: false,
-      ownMrChecks: undefined
+      ownMrChecks: undefined,
     });
 
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/100/merge_requests/1/approvals',
-      expect.any(Object)
+      expect.any(Object),
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/100/merge_requests/1',
-      expect.any(Object)
+      expect.any(Object),
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/200/merge_requests/2',
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -270,8 +270,8 @@ describe('GitLabClient', () => {
             has_conflicts: false,
             merge_status: 'can_be_merged',
             detailed_merge_status: 'can_be_merged',
-            head_pipeline: { status: 'failed' }
-          })
+            head_pipeline: { status: 'failed' },
+          }),
         } as Response;
       }
 
@@ -290,8 +290,8 @@ describe('GitLabClient', () => {
         author: { id: 123, username: 'other', name: 'Other' },
         has_conflicts: false,
         merge_status: 'can_be_merged',
-        pipeline: { status: 'failed' }
-      }
+        pipeline: { status: 'failed' },
+      },
     ];
 
     const signals = await client.buildHealthSignals(data, 99);
@@ -299,7 +299,7 @@ describe('GitLabClient', () => {
     expect(signals[0]).toMatchObject({
       ciStatus: 'unknown',
       hasFailedCi: false,
-      hasConflicts: false
+      hasConflicts: false,
     });
   });
 
@@ -314,8 +314,8 @@ describe('GitLabClient', () => {
             has_conflicts: false,
             merge_status: 'can_be_merged',
             detailed_merge_status: 'not_approved',
-            head_pipeline: { status: 'failed' }
-          })
+            head_pipeline: { status: 'failed' },
+          }),
         } as Response;
       }
 
@@ -334,8 +334,8 @@ describe('GitLabClient', () => {
         author: { id: 123, username: 'other', name: 'Other' },
         has_conflicts: false,
         merge_status: 'can_be_merged',
-        pipeline: { status: 'failed' }
-      }
+        pipeline: { status: 'failed' },
+      },
     ];
 
     const signals = await client.buildHealthSignals(data, 99);
@@ -343,7 +343,7 @@ describe('GitLabClient', () => {
     expect(signals[0]).toMatchObject({
       ciStatus: 'failed',
       hasFailedCi: true,
-      hasConflicts: false
+      hasConflicts: false,
     });
   });
 
@@ -357,12 +357,15 @@ describe('GitLabClient', () => {
           json: async () => ({
             has_conflicts: false,
             merge_status: 'can_be_merged',
-            head_pipeline: { status: 'success' }
-          })
+            head_pipeline: { status: 'success' },
+          }),
         } as Response;
       }
 
-      if (url === 'https://gitlab.com/api/v4/projects/500/merge_requests/50/notes?per_page=100&order_by=created_at&sort=desc') {
+      if (
+        url ===
+        'https://gitlab.com/api/v4/projects/500/merge_requests/50/notes?per_page=100&order_by=created_at&sort=desc'
+      ) {
         return {
           ok: true,
           json: async () => [
@@ -370,20 +373,20 @@ describe('GitLabClient', () => {
               id: 11,
               created_at: '2026-02-18T10:00:00Z',
               system: false,
-              author: { id: 123, username: 'author', name: 'Author' }
+              author: { id: 123, username: 'author', name: 'Author' },
             },
             {
               id: 10,
               created_at: '2026-02-18T09:00:00Z',
               system: false,
-              author: { id: 99, username: 'me', name: 'Me' }
+              author: { id: 99, username: 'me', name: 'Me' },
             },
             {
               created_at: '2026-02-18T08:00:00Z',
               system: false,
-              author: { id: 7, username: 'someone', name: 'Someone' }
-            }
-          ]
+              author: { id: 7, username: 'someone', name: 'Someone' },
+            },
+          ],
         } as Response;
       }
 
@@ -392,8 +395,8 @@ describe('GitLabClient', () => {
           ok: true,
           json: async () => [
             { id: 'b', created_at: '2026-02-18T08:30:00Z' },
-            { id: 'a', created_at: '2026-02-18T08:00:00Z' }
-          ]
+            { id: 'a', created_at: '2026-02-18T08:00:00Z' },
+          ],
         } as Response;
       }
 
@@ -412,8 +415,8 @@ describe('GitLabClient', () => {
         updated_at: '2026-02-18T10:00:00Z',
         author: { id: 123, username: 'author', name: 'Author' },
         has_conflicts: false,
-        merge_status: 'can_be_merged'
-      }
+        merge_status: 'can_be_merged',
+      },
     ];
 
     const signals = await client.buildHealthSignals(data, 99, { includeReviewerChecks: true });
@@ -422,24 +425,24 @@ describe('GitLabClient', () => {
       reviewStatus: 'needs_review',
       reviewerLastCommentedAt: '2026-02-18T09:00:00Z',
       latestCommitAt: '2026-02-18T08:30:00Z',
-      authorLastCommentedAt: '2026-02-18T10:00:00Z'
+      authorLastCommentedAt: '2026-02-18T10:00:00Z',
     });
     expect(signals[0]).toMatchObject({
       ciStatus: 'success',
       hasFailedCi: false,
-      hasConflicts: false
+      hasConflicts: false,
     });
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/500/merge_requests/50/notes?per_page=100&order_by=created_at&sort=desc',
-      expect.any(Object)
+      expect.any(Object),
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/500/merge_requests/50',
-      expect.any(Object)
+      expect.any(Object),
     );
     expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/500/merge_requests/50/commits?per_page=100',
-      expect.any(Object)
+      expect.any(Object),
     );
   });
 
@@ -452,12 +455,15 @@ describe('GitLabClient', () => {
           ok: true,
           json: async () => ({
             has_conflicts: false,
-            merge_status: 'can_be_merged'
-          })
+            merge_status: 'can_be_merged',
+          }),
         } as Response;
       }
 
-      if (url === 'https://gitlab.com/api/v4/projects/600/merge_requests/60/notes?per_page=100&order_by=created_at&sort=desc') {
+      if (
+        url ===
+        'https://gitlab.com/api/v4/projects/600/merge_requests/60/notes?per_page=100&order_by=created_at&sort=desc'
+      ) {
         return {
           ok: true,
           json: async () => [
@@ -465,22 +471,22 @@ describe('GitLabClient', () => {
               id: 20,
               created_at: '2026-02-18T09:00:00Z',
               system: false,
-              author: { id: 99, username: 'me', name: 'Me' }
+              author: { id: 99, username: 'me', name: 'Me' },
             },
             {
               id: 19,
               created_at: '2026-02-18T08:30:00Z',
               system: false,
-              author: { id: 777, username: 'author1', name: 'Author1' }
-            }
-          ]
+              author: { id: 777, username: 'author1', name: 'Author1' },
+            },
+          ],
         } as Response;
       }
 
       if (url === 'https://gitlab.com/api/v4/projects/600/merge_requests/60/commits?per_page=100') {
         return {
           ok: true,
-          json: async () => [{ id: 'c1', created_at: '2026-02-18T08:00:00Z' }]
+          json: async () => [{ id: 'c1', created_at: '2026-02-18T08:00:00Z' }],
         } as Response;
       }
 
@@ -489,12 +495,15 @@ describe('GitLabClient', () => {
           ok: true,
           json: async () => ({
             has_conflicts: false,
-            merge_status: 'can_be_merged'
-          })
+            merge_status: 'can_be_merged',
+          }),
         } as Response;
       }
 
-      if (url === 'https://gitlab.com/api/v4/projects/610/merge_requests/61/notes?per_page=100&order_by=created_at&sort=desc') {
+      if (
+        url ===
+        'https://gitlab.com/api/v4/projects/610/merge_requests/61/notes?per_page=100&order_by=created_at&sort=desc'
+      ) {
         return {
           ok: true,
           json: async () => [
@@ -502,16 +511,16 @@ describe('GitLabClient', () => {
               id: 30,
               created_at: '2026-02-18T11:00:00Z',
               system: false,
-              author: { id: 888, username: 'author2', name: 'Author2' }
-            }
-          ]
+              author: { id: 888, username: 'author2', name: 'Author2' },
+            },
+          ],
         } as Response;
       }
 
       if (url === 'https://gitlab.com/api/v4/projects/610/merge_requests/61/commits?per_page=100') {
         return {
           ok: true,
-          json: async () => [{ id: 'c2', created_at: '2026-02-18T10:00:00Z' }]
+          json: async () => [{ id: 'c2', created_at: '2026-02-18T10:00:00Z' }],
         } as Response;
       }
 
@@ -529,7 +538,7 @@ describe('GitLabClient', () => {
         state: 'opened',
         author: { id: 777, username: 'author1', name: 'Author1' },
         has_conflicts: false,
-        merge_status: 'can_be_merged'
+        merge_status: 'can_be_merged',
       },
       {
         id: 7,
@@ -540,8 +549,8 @@ describe('GitLabClient', () => {
         state: 'opened',
         author: { id: 888, username: 'author2', name: 'Author2' },
         has_conflicts: false,
-        merge_status: 'can_be_merged'
-      }
+        merge_status: 'can_be_merged',
+      },
     ];
 
     const signals = await client.buildHealthSignals(data, 99, { includeReviewerChecks: true });

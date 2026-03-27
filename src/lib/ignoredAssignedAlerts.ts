@@ -18,7 +18,7 @@ export function toCommitSignature(latestCommitAt: string | undefined): string {
 
 export function applyIgnoredAssignedAlertsUntilNewCommit(
   items: MergeRequestHealth[],
-  previousState: ReadonlyMap<number, IgnoredAssignedAlertState>
+  previousState: ReadonlyMap<number, IgnoredAssignedAlertState>,
 ): {
   ignoredMergeRequestIds: Set<number>;
   activeIgnoredSignals: Map<number, ActiveIgnoredAssignedSignals>;
@@ -51,7 +51,7 @@ export function applyIgnoredAssignedAlertsUntilNewCommit(
     ignoredMergeRequestIds.add(mergeRequestId);
     activeIgnoredSignals.set(mergeRequestId, {
       ignoreConflicts,
-      ignoreFailedCi
+      ignoreFailedCi,
     });
   }
 

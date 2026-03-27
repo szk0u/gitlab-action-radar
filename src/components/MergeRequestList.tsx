@@ -58,7 +58,9 @@ function getProjectLabel(mergeRequest: MergeRequest): string {
 }
 
 function getAssigneeLabel(mergeRequest: MergeRequest): string {
-  const assigneeNames = (mergeRequest.assignees ?? []).map((assignee) => assignee.name).filter(Boolean);
+  const assigneeNames = (mergeRequest.assignees ?? [])
+    .map((assignee) => assignee.name)
+    .filter(Boolean);
   if (assigneeNames.length > 0) {
     return [...new Set(assigneeNames)].join(', ');
   }
@@ -96,11 +98,16 @@ function renderOwnMergeRequestChecks(item: MergeRequestHealth) {
 
   return (
     <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200 pt-3">
-      <Badge className={isApproved ? 'border-transparent bg-emerald-100 text-emerald-700' : ''} variant={isApproved ? undefined : 'warning'}>
+      <Badge
+        className={isApproved ? 'border-transparent bg-emerald-100 text-emerald-700' : ''}
+        variant={isApproved ? undefined : 'warning'}
+      >
         {isApproved ? 'Approved' : 'Not approved'}
       </Badge>
       <Badge
-        className={hasUnresolvedComments ? '' : 'border-transparent bg-emerald-100 text-emerald-700'}
+        className={
+          hasUnresolvedComments ? '' : 'border-transparent bg-emerald-100 text-emerald-700'
+        }
         variant={hasUnresolvedComments ? 'destructive' : undefined}
       >
         {hasUnresolvedComments ? 'Unresolved comments' : 'Comments resolved'}
@@ -123,7 +130,7 @@ function formatDateTime(value: string | undefined): string {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
   }).format(date);
 }
 
@@ -170,7 +177,9 @@ function sortReviewRequestedItems(items: MergeRequestHealth[]): MergeRequestHeal
       return leftPriority - rightPriority;
     }
 
-    return getUpdatedAtMs(right.mergeRequest.updated_at) - getUpdatedAtMs(left.mergeRequest.updated_at);
+    return (
+      getUpdatedAtMs(right.mergeRequest.updated_at) - getUpdatedAtMs(left.mergeRequest.updated_at)
+    );
   });
 }
 
@@ -178,7 +187,7 @@ function summarizeReviewerStatuses(items: MergeRequestHealth[]): ReviewerStatusC
   const result: ReviewerStatusCounts = {
     needsReview: 0,
     waitingForAuthor: 0,
-    new: 0
+    new: 0,
   };
 
   for (const item of items) {
@@ -201,7 +210,7 @@ function summarizeAssignedStatuses(items: MergeRequestHealth[]): AssignedStatusC
   const result: AssignedStatusCounts = {
     conflicts: 0,
     failedCi: 0,
-    pendingApprovals: 0
+    pendingApprovals: 0,
   };
 
   for (const item of items) {
@@ -219,7 +228,10 @@ function summarizeAssignedStatuses(items: MergeRequestHealth[]): AssignedStatusC
   return result;
 }
 
-function matchesAssignedStatusFilter(item: MergeRequestHealth, filter: AssignedStatusFilter): boolean {
+function matchesAssignedStatusFilter(
+  item: MergeRequestHealth,
+  filter: AssignedStatusFilter,
+): boolean {
   if (filter === 'all') {
     return true;
   }
@@ -240,7 +252,8 @@ function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
     return null;
   }
 
-  const { reviewStatus, reviewerLastCommentedAt, latestCommitAt, authorLastCommentedAt } = item.reviewerChecks;
+  const { reviewStatus, reviewerLastCommentedAt, latestCommitAt, authorLastCommentedAt } =
+    item.reviewerChecks;
   const assigneeLabel = getAssigneeLabel(item.mergeRequest);
   const reviewStatusLabel =
     reviewStatus === 'needs_review'
@@ -248,7 +261,12 @@ function renderReviewerChecks(item: MergeRequestHealth, tabKey: TabKey) {
       : reviewStatus === 'waiting_for_author'
         ? '作者修正待ち'
         : '未着手';
-  const reviewStatusVariant = reviewStatus === 'needs_review' ? 'destructive' : reviewStatus === 'new' ? 'warning' : 'secondary';
+  const reviewStatusVariant =
+    reviewStatus === 'needs_review'
+      ? 'destructive'
+      : reviewStatus === 'new'
+        ? 'warning'
+        : 'secondary';
   const hasMyComment = Boolean(reviewerLastCommentedAt);
 
   return (
@@ -276,21 +294,24 @@ function renderMergeRequestItem(
   tabKey: TabKey,
   ignoredAssignedAlert: IgnoredAssignedAlertDisplay | undefined,
   onOpenMergeRequest?: (url: string) => void | Promise<void>,
-  onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void
+  onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void,
 ) {
   const { mergeRequest, ciStatus, hasFailedCi, hasConflicts, hasPendingApprovals } = item;
-  const isIgnoredConflict = tabKey === 'assigned' && ignoredAssignedAlert?.ignoreConflicts === true && hasConflicts;
-  const isIgnoredFailedCi = tabKey === 'assigned' && ignoredAssignedAlert?.ignoreFailedCi === true && hasFailedCi;
-  const isIgnoredAssignedUntilNewCommit = isIgnoredConflict || isIgnoredFailedCi;
+  const isIgnoredConflict =
+    tabKey === 'assigned' && ignoredAssignedAlert?.ignoreConflicts === true && hasConflicts;
+  const isIgnoredFailedCi =
+    tabKey === 'assigned' && ignoredAssignedAlert?.ignoreFailedCi === true && hasFailedCi;
   const isAtRisk = hasFailedCi || hasConflicts || hasPendingApprovals;
-  const canIgnoreUntilNewCommit = tabKey === 'assigned' && (hasConflicts || hasFailedCi) && !!onIgnoreAssignedUntilNewCommit;
-  const ignoreButtonLabel = isIgnoredConflict && isIgnoredFailedCi
-    ? '競合・CI失敗を無視中（新コミットで解除）'
-    : isIgnoredConflict
-      ? '競合を無視中（新コミットで解除）'
-      : isIgnoredFailedCi
-        ? 'CI失敗を無視中（新コミットで解除）'
-        : '新しいコミットまで無視';
+  const canIgnoreUntilNewCommit =
+    tabKey === 'assigned' && (hasConflicts || hasFailedCi) && !!onIgnoreAssignedUntilNewCommit;
+  const ignoreButtonLabel =
+    isIgnoredConflict && isIgnoredFailedCi
+      ? '競合・CI失敗を無視中（新コミットで解除）'
+      : isIgnoredConflict
+        ? '競合を無視中（新コミットで解除）'
+        : isIgnoredFailedCi
+          ? 'CI失敗を無視中（新コミットで解除）'
+          : '新しいコミットまで無視';
 
   return (
     <li key={mergeRequest.id}>
@@ -326,7 +347,10 @@ function renderMergeRequestItem(
             <Badge className={getCiBadgeClassName(ciStatus)} variant={getCiBadgeVariant(ciStatus)}>
               CI {getCiStatusLabel(ciStatus)}
             </Badge>
-            <Badge className={hasConflicts ? '' : 'border-transparent bg-emerald-100 text-emerald-700'} variant={hasConflicts ? 'warning' : undefined}>
+            <Badge
+              className={hasConflicts ? '' : 'border-transparent bg-emerald-100 text-emerald-700'}
+              variant={hasConflicts ? 'warning' : undefined}
+            >
               {hasConflicts ? 'Conflicts' : 'No conflicts'}
             </Badge>
             {hasPendingApprovals && <Badge variant="secondary">Pending approvals</Badge>}
@@ -341,7 +365,7 @@ function renderMergeRequestItem(
                 onClick={() => onIgnoreAssignedUntilNewCommit?.(mergeRequest.id)}
                 className={cn(
                   badgeVariants({ variant: 'secondary' }),
-                  'cursor-pointer text-xs transition-opacity hover:opacity-90'
+                  'cursor-pointer text-xs transition-opacity hover:opacity-90',
                 )}
               >
                 {ignoreButtonLabel}
@@ -362,7 +386,7 @@ function renderList(
   tabKey: TabKey,
   ignoredAssignedAlertMap: ReadonlyMap<number, IgnoredAssignedAlertDisplay>,
   onOpenMergeRequest?: (url: string) => void | Promise<void>,
-  onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void
+  onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void,
 ) {
   if (items.length === 0) {
     return (
@@ -380,8 +404,8 @@ function renderList(
           tabKey,
           tabKey === 'assigned' ? ignoredAssignedAlertMap.get(item.mergeRequest.id) : undefined,
           onOpenMergeRequest,
-          onIgnoreAssignedUntilNewCommit
-        )
+          onIgnoreAssignedUntilNewCommit,
+        ),
       )}
     </ul>
   );
@@ -395,20 +419,23 @@ export function MergeRequestList({
   error,
   onOpenMergeRequest,
   onIgnoreAssignedUntilNewCommit,
-  tabNavigationRequest
+  tabNavigationRequest,
 }: MergeRequestListProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('assigned');
   const [assignedStatusFilter, setAssignedStatusFilter] = useState<AssignedStatusFilter>('all');
   const [reviewStatusFilter, setReviewStatusFilter] = useState<ReviewStatusFilter>('all');
   const ignoredAssignedAlertMap = useMemo(
     () => new Map((ignoredAssignedAlerts ?? []).map((entry) => [entry.mergeRequestId, entry])),
-    [ignoredAssignedAlerts]
+    [ignoredAssignedAlerts],
   );
   const filteredAssignedItems = useMemo(
     () => assignedItems.filter((item) => matchesAssignedStatusFilter(item, assignedStatusFilter)),
-    [assignedItems, assignedStatusFilter]
+    [assignedItems, assignedStatusFilter],
   );
-  const assignedStatusCounts = useMemo(() => summarizeAssignedStatuses(assignedItems), [assignedItems]);
+  const assignedStatusCounts = useMemo(
+    () => summarizeAssignedStatuses(assignedItems),
+    [assignedItems],
+  );
   const assignedListEmptyMessage = useMemo(() => {
     if (assignedStatusFilter === 'conflicts') {
       return 'No assigned merge requests in 競合.';
@@ -423,17 +450,19 @@ export function MergeRequestList({
   }, [assignedStatusFilter]);
   const sortedReviewRequestedItems = useMemo(
     () => sortReviewRequestedItems(reviewRequestedItems),
-    [reviewRequestedItems]
+    [reviewRequestedItems],
   );
   const filteredReviewRequestedItems = useMemo(() => {
     if (reviewStatusFilter === 'all') {
       return sortedReviewRequestedItems;
     }
-    return sortedReviewRequestedItems.filter((item) => getReviewStatus(item) === reviewStatusFilter);
+    return sortedReviewRequestedItems.filter(
+      (item) => getReviewStatus(item) === reviewStatusFilter,
+    );
   }, [reviewStatusFilter, sortedReviewRequestedItems]);
   const reviewStatusCounts = useMemo(
     () => summarizeReviewerStatuses(reviewRequestedItems),
-    [reviewRequestedItems]
+    [reviewRequestedItems],
   );
   const reviewListEmptyMessage = useMemo(() => {
     if (reviewStatusFilter === 'needs_review') {
@@ -517,7 +546,9 @@ export function MergeRequestList({
                 className={cn(
                   badgeVariants({ variant: 'warning' }),
                   'cursor-pointer transition-opacity',
-                  assignedStatusFilter === 'conflicts' ? 'ring-2 ring-amber-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+                  assignedStatusFilter === 'conflicts'
+                    ? 'ring-2 ring-amber-300 ring-offset-1'
+                    : 'opacity-75 hover:opacity-100',
                 )}
                 onClick={() => toggleAssignedStatusFilter('conflicts')}
               >
@@ -529,7 +560,9 @@ export function MergeRequestList({
                 className={cn(
                   badgeVariants({ variant: 'destructive' }),
                   'cursor-pointer transition-opacity',
-                  assignedStatusFilter === 'failed_ci' ? 'ring-2 ring-red-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+                  assignedStatusFilter === 'failed_ci'
+                    ? 'ring-2 ring-red-300 ring-offset-1'
+                    : 'opacity-75 hover:opacity-100',
                 )}
                 onClick={() => toggleAssignedStatusFilter('failed_ci')}
               >
@@ -541,7 +574,9 @@ export function MergeRequestList({
                 className={cn(
                   badgeVariants({ variant: 'secondary' }),
                   'cursor-pointer transition-opacity',
-                  assignedStatusFilter === 'pending_approvals' ? 'ring-2 ring-slate-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+                  assignedStatusFilter === 'pending_approvals'
+                    ? 'ring-2 ring-slate-300 ring-offset-1'
+                    : 'opacity-75 hover:opacity-100',
                 )}
                 onClick={() => toggleAssignedStatusFilter('pending_approvals')}
               >
@@ -555,7 +590,7 @@ export function MergeRequestList({
             'assigned',
             ignoredAssignedAlertMap,
             onOpenMergeRequest,
-            onIgnoreAssignedUntilNewCommit
+            onIgnoreAssignedUntilNewCommit,
           )}
         </div>
       </TabsContent>
@@ -568,7 +603,9 @@ export function MergeRequestList({
               className={cn(
                 badgeVariants({ variant: 'destructive' }),
                 'cursor-pointer transition-opacity',
-                reviewStatusFilter === 'needs_review' ? 'ring-2 ring-red-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+                reviewStatusFilter === 'needs_review'
+                  ? 'ring-2 ring-red-300 ring-offset-1'
+                  : 'opacity-75 hover:opacity-100',
               )}
               onClick={() => toggleReviewStatusFilter('needs_review')}
             >
@@ -580,7 +617,9 @@ export function MergeRequestList({
               className={cn(
                 badgeVariants({ variant: 'warning' }),
                 'cursor-pointer transition-opacity',
-                reviewStatusFilter === 'new' ? 'ring-2 ring-amber-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+                reviewStatusFilter === 'new'
+                  ? 'ring-2 ring-amber-300 ring-offset-1'
+                  : 'opacity-75 hover:opacity-100',
               )}
               onClick={() => toggleReviewStatusFilter('new')}
             >
@@ -592,7 +631,9 @@ export function MergeRequestList({
               className={cn(
                 badgeVariants({ variant: 'secondary' }),
                 'cursor-pointer transition-opacity',
-                reviewStatusFilter === 'waiting_for_author' ? 'ring-2 ring-slate-300 ring-offset-1' : 'opacity-75 hover:opacity-100'
+                reviewStatusFilter === 'waiting_for_author'
+                  ? 'ring-2 ring-slate-300 ring-offset-1'
+                  : 'opacity-75 hover:opacity-100',
               )}
               onClick={() => toggleReviewStatusFilter('waiting_for_author')}
             >
@@ -606,7 +647,7 @@ export function MergeRequestList({
           'review',
           ignoredAssignedAlertMap,
           onOpenMergeRequest,
-          onIgnoreAssignedUntilNewCommit
+          onIgnoreAssignedUntilNewCommit,
         )}
       </TabsContent>
     </Tabs>

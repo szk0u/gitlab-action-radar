@@ -2,11 +2,7 @@
 
 :root {
   font-family:
-    'Instrument Sans',
-    'Noto Sans JP',
-    'Hiragino Kaku Gothic ProN',
-    'Yu Gothic',
-    sans-serif;
+    'Instrument Sans', 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
   color: #0f172a;
   background-color: #e2e8f0;
 }

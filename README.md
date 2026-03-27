@@ -3,23 +3,28 @@
 Tauri + React + TypeScript で作るメニューバー常駐型の GitLab MR レーダーです。
 
 ## セットアップ (pnpm)
+
 ```bash
 pnpm install
 pnpm dev
 ```
 
 Tauri 起動:
+
 ```bash
 pnpm tauri dev
 ```
 
 ## ビルド
+
 フロントエンド（`dist`）をビルド:
+
 ```bash
 pnpm build
 ```
 
 配布用の Tauri アプリをビルド:
+
 ```bash
 pnpm tauri build
 ```
@@ -28,23 +33,27 @@ pnpm tauri build
 成果物は `src-tauri/target/release/bundle` 配下に生成されます。
 
 ## テスト (Vitest)
+
 ```bash
 pnpm test
 ```
 
 ## Storybook
+
 ```bash
 pnpm storybook
 pnpm build-storybook
 ```
 
 ## 収集対象MR
+
 - 自分にアサインされている Open MR
 - 自分が reviewer に設定されている Open MR
 
 プロジェクトIDの指定は不要です。
 
 ## メニューバー表示
+
 - トレイアイコンは 3 本バーで状態を色分け表示します。
   - 競合あり: オレンジ
   - CI失敗: 赤
@@ -58,6 +67,7 @@ pnpm build-storybook
 - `Auto polling` / `Review reminder` と、無視対象MRの状態は `tauri-plugin-store`（`app-settings.json`）に保存され、再起動後も保持されます。
 
 ## 認証
+
 - PAT のみ対応
 - 画面の `Open PAT Page` で GitLab の PAT 発行ページを開けます（`name=GitLab Action Radar` / `scopes=read_api` を自動付与）
 - 必要最小権限は `read_api`（API 読み取り専用）です
@@ -66,4 +76,5 @@ pnpm build-storybook
 - `VITE_GITLAB_PAT_ISSUE_URL` で PAT 発行ページ URL を上書きできます
 
 ## アーキテクチャ
+
 `docs/architecture.md` を参照。

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { buildAssignedAlertSnapshot, detectAssignedAlertDiff } from '../src/lib/assignedAlertDiff';
 import { MergeRequestHealth } from '../src/types/gitlab';
 
-function createHealth(id: number, iid: number, options?: { hasConflicts?: boolean; hasFailedCi?: boolean }): MergeRequestHealth {
+function createHealth(
+  id: number,
+  iid: number,
+  options?: { hasConflicts?: boolean; hasFailedCi?: boolean },
+): MergeRequestHealth {
   return {
     mergeRequest: {
       id,
@@ -12,13 +16,13 @@ function createHealth(id: number, iid: number, options?: { hasConflicts?: boolea
       web_url: `https://gitlab.example.com/group/project/-/merge_requests/${iid}`,
       state: 'opened',
       has_conflicts: options?.hasConflicts === true,
-      merge_status: options?.hasConflicts ? 'cannot_be_merged' : 'can_be_merged'
+      merge_status: options?.hasConflicts ? 'cannot_be_merged' : 'can_be_merged',
     },
     ciStatus: options?.hasFailedCi === true ? 'failed' : 'success',
     hasConflicts: options?.hasConflicts === true,
     hasFailedCi: options?.hasFailedCi === true,
     hasPendingApprovals: false,
-    isCreatedByMe: true
+    isCreatedByMe: true,
   };
 }
 
@@ -37,7 +41,7 @@ describe('assignedAlertDiff', () => {
     const previousItems = [createHealth(1, 10, { hasConflicts: false, hasFailedCi: false })];
     const currentItems = [
       createHealth(1, 10, { hasConflicts: false, hasFailedCi: false }),
-      createHealth(2, 20, { hasConflicts: true, hasFailedCi: false })
+      createHealth(2, 20, { hasConflicts: true, hasFailedCi: false }),
     ];
 
     const diff = detectAssignedAlertDiff(buildAssignedAlertSnapshot(previousItems), currentItems);
@@ -49,11 +53,11 @@ describe('assignedAlertDiff', () => {
   it('detectAssignedAlertDiff should not include already-alerting items repeatedly', () => {
     const previousItems = [
       createHealth(1, 10, { hasConflicts: true, hasFailedCi: true }),
-      createHealth(2, 20, { hasConflicts: false, hasFailedCi: true })
+      createHealth(2, 20, { hasConflicts: false, hasFailedCi: true }),
     ];
     const currentItems = [
       createHealth(1, 10, { hasConflicts: true, hasFailedCi: true }),
-      createHealth(2, 20, { hasConflicts: false, hasFailedCi: true })
+      createHealth(2, 20, { hasConflicts: false, hasFailedCi: true }),
     ];
 
     const diff = detectAssignedAlertDiff(buildAssignedAlertSnapshot(previousItems), currentItems);

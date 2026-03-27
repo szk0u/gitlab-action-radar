@@ -5,7 +5,7 @@ import type { MergeRequestHealth } from '../types/gitlab';
 
 function buildMergeRequestHealth(
   id: number,
-  overrides: Partial<MergeRequestHealth> = {}
+  overrides: Partial<MergeRequestHealth> = {},
 ): MergeRequestHealth {
   return {
     mergeRequest: {
@@ -22,19 +22,19 @@ function buildMergeRequestHealth(
       has_conflicts: false,
       merge_status: 'can_be_merged',
       references: {
-        full: 'example/project!42'
+        full: 'example/project!42',
       },
       pipeline: {
-        status: 'success'
+        status: 'success',
       },
-      reviewers: [{ id: 1 }]
+      reviewers: [{ id: 1 }],
     },
     ciStatus: 'success',
     hasFailedCi: false,
     hasConflicts: false,
     hasPendingApprovals: false,
     isCreatedByMe: false,
-    ...overrides
+    ...overrides,
   };
 }
 
@@ -48,8 +48,8 @@ const assignedItems: MergeRequestHealth[] = [
     mergeRequest: {
       ...assignedBase.mergeRequest,
       title: 'Fix flaky webhook retries',
-      updated_at: '2026-03-27T10:12:00.000Z'
-    }
+      updated_at: '2026-03-27T10:12:00.000Z',
+    },
   },
   {
     ...buildMergeRequestHealth(43),
@@ -58,8 +58,8 @@ const assignedItems: MergeRequestHealth[] = [
     mergeRequest: {
       ...buildMergeRequestHealth(43).mergeRequest,
       title: 'Refactor alert persistence',
-      updated_at: '2026-03-27T06:45:00.000Z'
-    }
+      updated_at: '2026-03-27T06:45:00.000Z',
+    },
   },
   {
     ...buildMergeRequestHealth(44),
@@ -67,14 +67,14 @@ const assignedItems: MergeRequestHealth[] = [
     ownMrChecks: {
       isApproved: true,
       hasUnresolvedComments: false,
-      ciStatus: 'success'
+      ciStatus: 'success',
     },
     mergeRequest: {
       ...buildMergeRequestHealth(44).mergeRequest,
       title: 'Polish notification copy',
-      updated_at: '2026-03-26T23:10:00.000Z'
-    }
-  }
+      updated_at: '2026-03-26T23:10:00.000Z',
+    },
+  },
 ];
 
 const reviewRequestedItems: MergeRequestHealth[] = [
@@ -84,13 +84,13 @@ const reviewRequestedItems: MergeRequestHealth[] = [
       reviewStatus: 'needs_review',
       reviewerLastCommentedAt: '2026-03-26T12:00:00.000Z',
       latestCommitAt: '2026-03-27T09:55:00.000Z',
-      authorLastCommentedAt: '2026-03-27T10:00:00.000Z'
+      authorLastCommentedAt: '2026-03-27T10:00:00.000Z',
     },
     mergeRequest: {
       ...buildMergeRequestHealth(51).mergeRequest,
       title: 'Add command palette shortcuts',
-      updated_at: '2026-03-27T09:55:00.000Z'
-    }
+      updated_at: '2026-03-27T09:55:00.000Z',
+    },
   },
   {
     ...buildMergeRequestHealth(52),
@@ -98,14 +98,14 @@ const reviewRequestedItems: MergeRequestHealth[] = [
       reviewStatus: 'waiting_for_author',
       reviewerLastCommentedAt: '2026-03-25T08:10:00.000Z',
       latestCommitAt: '2026-03-25T07:50:00.000Z',
-      authorLastCommentedAt: '2026-03-25T08:00:00.000Z'
+      authorLastCommentedAt: '2026-03-25T08:00:00.000Z',
     },
     mergeRequest: {
       ...buildMergeRequestHealth(52).mergeRequest,
       title: 'Improve PAT onboarding',
-      updated_at: '2026-03-25T08:00:00.000Z'
-    }
-  }
+      updated_at: '2026-03-25T08:00:00.000Z',
+    },
+  },
 ];
 
 const meta = {
@@ -117,18 +117,18 @@ const meta = {
     reviewRequestedItems,
     ignoredAssignedAlerts: [{ mergeRequestId: 43, ignoreConflicts: false, ignoreFailedCi: true }],
     onOpenMergeRequest: fn(),
-    onIgnoreAssignedUntilNewCommit: fn()
+    onIgnoreAssignedUntilNewCommit: fn(),
   },
   decorators: [
     (Story) => (
       <div className="w-full max-w-4xl">
         <Story />
       </div>
-    )
+    ),
   ],
   parameters: {
-    layout: 'padded'
-  }
+    layout: 'padded',
+  },
 } satisfies Meta<typeof MergeRequestList>;
 
 export default meta;
@@ -141,21 +141,21 @@ export const Loading: Story = {
   args: {
     loading: true,
     assignedItems: [],
-    reviewRequestedItems: []
-  }
+    reviewRequestedItems: [],
+  },
 };
 
 export const ErrorState: Story = {
   args: {
     error: 'Failed to load merge requests from GitLab.',
     assignedItems: [],
-    reviewRequestedItems: []
-  }
+    reviewRequestedItems: [],
+  },
 };
 
 export const Empty: Story = {
   args: {
     assignedItems: [],
-    reviewRequestedItems: []
-  }
+    reviewRequestedItems: [],
+  },
 };

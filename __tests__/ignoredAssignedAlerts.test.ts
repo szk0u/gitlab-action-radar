@@ -8,7 +8,7 @@ function createAssignedHealth(
     hasConflicts?: boolean;
     hasFailedCi?: boolean;
     latestCommitAt?: string;
-  }
+  },
 ): MergeRequestHealth {
   return {
     mergeRequest: {
@@ -19,14 +19,14 @@ function createAssignedHealth(
       web_url: `https://gitlab.com/group/project/-/merge_requests/${id}`,
       state: 'opened',
       has_conflicts: options?.hasConflicts === true,
-      merge_status: options?.hasConflicts ? 'cannot_be_merged' : 'can_be_merged'
+      merge_status: options?.hasConflicts ? 'cannot_be_merged' : 'can_be_merged',
     },
     ciStatus: options?.hasFailedCi === true ? 'failed' : 'success',
     hasFailedCi: options?.hasFailedCi === true,
     hasConflicts: options?.hasConflicts === true,
     hasPendingApprovals: false,
     isCreatedByMe: false,
-    latestCommitAt: options?.latestCommitAt
+    latestCommitAt: options?.latestCommitAt,
   };
 }
 
@@ -34,7 +34,7 @@ describe('ignoredAssignedAlerts', () => {
   it('should hide only explicitly ignored MR while commit is unchanged', () => {
     const mr = createAssignedHealth(1, {
       hasConflicts: true,
-      latestCommitAt: '2026-02-19T00:00:00Z'
+      latestCommitAt: '2026-02-19T00:00:00Z',
     });
 
     const first = applyIgnoredAssignedAlertsUntilNewCommit(
@@ -45,27 +45,27 @@ describe('ignoredAssignedAlerts', () => {
           {
             commitSignature: '2026-02-19T00:00:00Z',
             ignoreConflicts: true,
-            ignoreFailedCi: false
-          }
-        ]
-      ])
+            ignoreFailedCi: false,
+          },
+        ],
+      ]),
     );
     expect(first.ignoredMergeRequestIds.has(1)).toBe(true);
     expect(first.activeIgnoredSignals.get(1)).toEqual({
       ignoreConflicts: true,
-      ignoreFailedCi: false
+      ignoreFailedCi: false,
     });
     expect(first.nextState.get(1)).toMatchObject({
       commitSignature: '2026-02-19T00:00:00Z',
       ignoreConflicts: true,
-      ignoreFailedCi: false
+      ignoreFailedCi: false,
     });
   });
 
   it('should release ignored MR when new commit is pushed', () => {
     const newCommit = createAssignedHealth(2, {
       hasFailedCi: true,
-      latestCommitAt: '2026-02-19T01:00:00Z'
+      latestCommitAt: '2026-02-19T01:00:00Z',
     });
     const result = applyIgnoredAssignedAlertsUntilNewCommit(
       [newCommit],
@@ -75,10 +75,10 @@ describe('ignoredAssignedAlerts', () => {
           {
             commitSignature: '2026-02-19T00:00:00Z',
             ignoreConflicts: false,
-            ignoreFailedCi: true
-          }
-        ]
-      ])
+            ignoreFailedCi: true,
+          },
+        ],
+      ]),
     );
     expect(result.ignoredMergeRequestIds.has(2)).toBe(false);
     expect(result.activeIgnoredSignals.has(2)).toBe(false);
@@ -88,7 +88,7 @@ describe('ignoredAssignedAlerts', () => {
   it('should not hide non-ignored MR', () => {
     const conflictMr = createAssignedHealth(3, {
       hasConflicts: true,
-      latestCommitAt: '2026-02-19T00:00:00Z'
+      latestCommitAt: '2026-02-19T00:00:00Z',
     });
     const result = applyIgnoredAssignedAlertsUntilNewCommit([conflictMr], new Map());
     expect(result.ignoredMergeRequestIds.size).toBe(0);
@@ -99,7 +99,7 @@ describe('ignoredAssignedAlerts', () => {
     const healthyMr = createAssignedHealth(3, {
       hasConflicts: false,
       hasFailedCi: false,
-      latestCommitAt: '2026-02-19T00:00:00Z'
+      latestCommitAt: '2026-02-19T00:00:00Z',
     });
     const result = applyIgnoredAssignedAlertsUntilNewCommit(
       [healthyMr],
@@ -109,10 +109,10 @@ describe('ignoredAssignedAlerts', () => {
           {
             commitSignature: '2026-02-19T00:00:00Z',
             ignoreConflicts: true,
-            ignoreFailedCi: true
-          }
-        ]
-      ])
+            ignoreFailedCi: true,
+          },
+        ],
+      ]),
     );
     expect(result.ignoredMergeRequestIds.has(3)).toBe(false);
     expect(result.activeIgnoredSignals.has(3)).toBe(false);
@@ -123,7 +123,7 @@ describe('ignoredAssignedAlerts', () => {
     const riskyMr = createAssignedHealth(4, {
       hasConflicts: true,
       hasFailedCi: true,
-      latestCommitAt: '2026-02-19T00:00:00Z'
+      latestCommitAt: '2026-02-19T00:00:00Z',
     });
 
     const result = applyIgnoredAssignedAlertsUntilNewCommit(
@@ -134,16 +134,16 @@ describe('ignoredAssignedAlerts', () => {
           {
             commitSignature: '2026-02-19T00:00:00Z',
             ignoreConflicts: true,
-            ignoreFailedCi: false
-          }
-        ]
-      ])
+            ignoreFailedCi: false,
+          },
+        ],
+      ]),
     );
 
     expect(result.ignoredMergeRequestIds.has(4)).toBe(true);
     expect(result.activeIgnoredSignals.get(4)).toEqual({
       ignoreConflicts: true,
-      ignoreFailedCi: false
+      ignoreFailedCi: false,
     });
   });
 });

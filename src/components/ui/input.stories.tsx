@@ -6,20 +6,20 @@ const meta = {
   component: Input,
   tags: ['autodocs'],
   args: {
-    placeholder: 'glpat-xxxxxxxxxxxxxxxxxxxx'
+    placeholder: 'glpat-xxxxxxxxxxxxxxxxxxxx',
   },
   decorators: [
     (Story) => (
       <div className="w-[320px]">
         <Story />
       </div>
-    )
+    ),
   ],
   argTypes: {
     className: {
-      control: false
-    }
-  }
+      control: false,
+    },
+  },
 } satisfies Meta<typeof Input>;
 
 export default meta;
@@ -31,6 +31,6 @@ export const Playground: Story = {};
 export const Disabled: Story = {
   args: {
     disabled: true,
-    defaultValue: 'Stored securely'
-  }
+    defaultValue: 'Stored securely',
+  },
 };

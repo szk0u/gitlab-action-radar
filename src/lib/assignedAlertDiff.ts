@@ -10,12 +10,14 @@ export interface AssignedAlertDiff {
   newlyFailedCi: MergeRequestHealth[];
 }
 
-export function buildAssignedAlertSnapshot(items: MergeRequestHealth[]): Map<number, AssignedAlertSnapshot> {
+export function buildAssignedAlertSnapshot(
+  items: MergeRequestHealth[],
+): Map<number, AssignedAlertSnapshot> {
   const snapshot = new Map<number, AssignedAlertSnapshot>();
   for (const item of items) {
     snapshot.set(item.mergeRequest.id, {
       hasConflicts: item.hasConflicts,
-      hasFailedCi: item.hasFailedCi
+      hasFailedCi: item.hasFailedCi,
     });
   }
   return snapshot;
@@ -23,7 +25,7 @@ export function buildAssignedAlertSnapshot(items: MergeRequestHealth[]): Map<num
 
 export function detectAssignedAlertDiff(
   previousSnapshot: ReadonlyMap<number, AssignedAlertSnapshot>,
-  currentItems: MergeRequestHealth[]
+  currentItems: MergeRequestHealth[],
 ): AssignedAlertDiff {
   const newlyConflicted: MergeRequestHealth[] = [];
   const newlyFailedCi: MergeRequestHealth[] = [];

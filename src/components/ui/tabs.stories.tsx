@@ -11,8 +11,8 @@ const meta = {
       <div className="w-[420px]">
         <Story />
       </div>
-    )
-  ]
+    ),
+  ],
 } satisfies Meta<typeof Tabs>;
 
 export default meta;
@@ -28,14 +28,18 @@ export const Overview: Story = {
       </TabsList>
       <TabsContent value="assigned">
         <Card>
-          <CardContent className="pt-5 text-sm text-slate-600">Assigned merge requests appear here.</CardContent>
+          <CardContent className="pt-5 text-sm text-slate-600">
+            Assigned merge requests appear here.
+          </CardContent>
         </Card>
       </TabsContent>
       <TabsContent value="review">
         <Card>
-          <CardContent className="pt-5 text-sm text-slate-600">Review queue appears here.</CardContent>
+          <CardContent className="pt-5 text-sm text-slate-600">
+            Review queue appears here.
+          </CardContent>
         </Card>
       </TabsContent>
     </Tabs>
-  )
+  ),
 };

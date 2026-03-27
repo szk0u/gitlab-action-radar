@@ -8,21 +8,21 @@ const preview = {
       default: 'slate',
       values: [
         { name: 'slate', value: '#e2e8f0' },
-        { name: 'white', value: '#ffffff' }
-      ]
+        { name: 'white', value: '#ffffff' },
+      ],
     },
     controls: {
       matchers: {
         color: /(background|color)$/i,
-        date: /Date$/i
-      }
+        date: /Date$/i,
+      },
     },
     options: {
       storySort: {
-        order: ['UI', 'Composite']
-      }
-    }
-  }
+        order: ['UI', 'Composite'],
+      },
+    },
+  },
 } satisfies Preview;
 
 export default preview;

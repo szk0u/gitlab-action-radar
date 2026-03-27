@@ -1,13 +1,18 @@
 {
   "name": "gitlab-action-radar",
-  "private": true,
   "version": "0.2.0",
+  "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "check": "pnpm fmt:check && pnpm lint && pnpm test && pnpm build",
+    "fmt": "oxfmt .",
+    "fmt:check": "oxfmt --check .",
+    "lint": "oxlint . --deny-warnings",
+    "lint:fix": "oxlint . --fix --deny-warnings",
     "preview": "vite preview",
+    "prepare": "lefthook install",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "tauri": "tauri",
@@ -38,10 +43,14 @@
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
     "jsdom": "^28.1.0",
+    "lefthook": "^2.1.4",
+    "oxfmt": "^0.42.0",
+    "oxlint": "^1.57.0",
     "storybook": "10.3.3",
     "tailwindcss": "^4.1.18",
     "typescript": "latest",
     "vite": "latest",
     "vitest": "latest"
-  }
+  },
+  "packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937"
 }

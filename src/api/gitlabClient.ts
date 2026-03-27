@@ -10,7 +10,7 @@ import {
   MyRelevantMergeRequests,
   OwnMergeRequestChecks,
   ReviewerMergeRequestChecks,
-  ReviewerReviewStatus
+  ReviewerReviewStatus,
 } from '../types/gitlab';
 
 export interface GitLabClientConfig {
@@ -40,8 +40,8 @@ export class GitLabClient {
     const response = await fetch(`${this.baseUrl}${pathWithQuery}`, {
       headers: {
         'PRIVATE-TOKEN': this.token,
-        'Content-Type': 'application/json'
-      }
+        'Content-Type': 'application/json',
+      },
     });
 
     if (!response.ok) {
@@ -87,7 +87,9 @@ export class GitLabClient {
     );
   }
 
-  private getMergeRequestApprovals(mergeRequest: MergeRequest): Promise<MergeRequestApprovals | undefined> {
+  private getMergeRequestApprovals(
+    mergeRequest: MergeRequest,
+  ): Promise<MergeRequestApprovals | undefined> {
     const key = this.getMergeRequestKey(mergeRequest);
     const cached = this.approvalsCache.get(key);
     if (cached) {
@@ -96,15 +98,17 @@ export class GitLabClient {
 
     const promise = this.request<MergeRequestApprovals>(
       `/api/v4/projects/${encodeURIComponent(String(mergeRequest.project_id))}/merge_requests/${encodeURIComponent(
-        String(mergeRequest.iid)
-      )}/approvals`
+        String(mergeRequest.iid),
+      )}/approvals`,
     ).catch(() => undefined);
 
     this.approvalsCache.set(key, promise);
     return promise;
   }
 
-  private getMergeRequestDetails(mergeRequest: MergeRequest): Promise<MergeRequestDetails | undefined> {
+  private getMergeRequestDetails(
+    mergeRequest: MergeRequest,
+  ): Promise<MergeRequestDetails | undefined> {
     const key = this.getMergeRequestKey(mergeRequest);
     const cached = this.detailsCache.get(key);
     if (cached) {
@@ -113,15 +117,17 @@ export class GitLabClient {
 
     const promise = this.request<MergeRequestDetails>(
       `/api/v4/projects/${encodeURIComponent(String(mergeRequest.project_id))}/merge_requests/${encodeURIComponent(
-        String(mergeRequest.iid)
-      )}`
+        String(mergeRequest.iid),
+      )}`,
     ).catch(() => undefined);
 
     this.detailsCache.set(key, promise);
     return promise;
   }
 
-  private getMergeRequestNotes(mergeRequest: MergeRequest): Promise<MergeRequestNote[] | undefined> {
+  private getMergeRequestNotes(
+    mergeRequest: MergeRequest,
+  ): Promise<MergeRequestNote[] | undefined> {
     const key = this.getMergeRequestKey(mergeRequest);
     const cached = this.notesCache.get(key);
     if (cached) {
@@ -130,15 +136,17 @@ export class GitLabClient {
 
     const promise = this.request<MergeRequestNote[]>(
       `/api/v4/projects/${encodeURIComponent(String(mergeRequest.project_id))}/merge_requests/${encodeURIComponent(
-        String(mergeRequest.iid)
-      )}/notes?per_page=100&order_by=created_at&sort=desc`
+        String(mergeRequest.iid),
+      )}/notes?per_page=100&order_by=created_at&sort=desc`,
     ).catch(() => undefined);
 
     this.notesCache.set(key, promise);
     return promise;
   }
 
-  private getMergeRequestCommits(mergeRequest: MergeRequest): Promise<MergeRequestCommit[] | undefined> {
+  private getMergeRequestCommits(
+    mergeRequest: MergeRequest,
+  ): Promise<MergeRequestCommit[] | undefined> {
     const key = this.getMergeRequestKey(mergeRequest);
     const cached = this.commitsCache.get(key);
     if (cached) {
@@ -147,8 +155,8 @@ export class GitLabClient {
 
     const promise = this.request<MergeRequestCommit[]>(
       `/api/v4/projects/${encodeURIComponent(String(mergeRequest.project_id))}/merge_requests/${encodeURIComponent(
-        String(mergeRequest.iid)
-      )}/commits?per_page=100`
+        String(mergeRequest.iid),
+      )}/commits?per_page=100`,
     ).catch(() => undefined);
 
     this.commitsCache.set(key, promise);
@@ -173,22 +181,22 @@ export class GitLabClient {
 
     const [assigned, reviewRequested] = await Promise.all([
       this.request<MergeRequest[]>(
-        `/api/v4/merge_requests?scope=all&state=opened&assignee_id=${currentUser.id}&per_page=100`
+        `/api/v4/merge_requests?scope=all&state=opened&assignee_id=${currentUser.id}&per_page=100`,
       ),
       this.request<MergeRequest[]>(
-        `/api/v4/merge_requests?scope=all&state=opened&reviewer_id=${currentUser.id}&per_page=100`
-      )
+        `/api/v4/merge_requests?scope=all&state=opened&reviewer_id=${currentUser.id}&per_page=100`,
+      ),
     ]);
 
     const filteredReviewRequested = this.dedupeById(reviewRequested).filter(
-      (mergeRequest) => !this.isDraftMergeRequest(mergeRequest)
+      (mergeRequest) => !this.isDraftMergeRequest(mergeRequest),
     );
 
     const reviewRequestedWithReviewState = await Promise.all(
       filteredReviewRequested.map(async (mergeRequest) => ({
         mergeRequest,
-        reviewedByMe: await this.isReviewedByUser(mergeRequest, currentUser.id)
-      }))
+        reviewedByMe: await this.isReviewedByUser(mergeRequest, currentUser.id),
+      })),
     );
 
     return {
@@ -196,14 +204,16 @@ export class GitLabClient {
       assigned: this.dedupeById(assigned),
       reviewRequested: reviewRequestedWithReviewState
         .filter((item) => !item.reviewedByMe)
-        .map((item) => item.mergeRequest)
+        .map((item) => item.mergeRequest),
     };
   }
 
-  private async buildOwnMergeRequestChecks(mergeRequest: MergeRequest): Promise<OwnMergeRequestChecks> {
+  private async buildOwnMergeRequestChecks(
+    mergeRequest: MergeRequest,
+  ): Promise<OwnMergeRequestChecks> {
     const [approvals, details] = await Promise.all([
       this.getMergeRequestApprovals(mergeRequest),
-      this.getMergeRequestDetails(mergeRequest)
+      this.getMergeRequestDetails(mergeRequest),
     ]);
 
     const isApproved =
@@ -212,7 +222,8 @@ export class GitLabClient {
       (approvals?.approved_by?.length ?? 0) > 0;
 
     const hasUnresolvedComments =
-      (typeof details?.unresolved_discussions_count === 'number' && details.unresolved_discussions_count > 0) ||
+      (typeof details?.unresolved_discussions_count === 'number' &&
+        details.unresolved_discussions_count > 0) ||
       details?.blocking_discussions_resolved === false;
     const normalizedCiStatus = this.getNormalizedCiStatus(mergeRequest, details);
     const ciStatus = this.toCiStatus(normalizedCiStatus, details);
@@ -220,7 +231,7 @@ export class GitLabClient {
     return {
       isApproved,
       hasUnresolvedComments,
-      ciStatus
+      ciStatus,
     };
   }
 
@@ -359,7 +370,7 @@ export class GitLabClient {
   private resolveReviewStatus(
     reviewerLastCommentedAt: string | undefined,
     latestCommitAt: string | undefined,
-    authorLastCommentedAt: string | undefined
+    authorLastCommentedAt: string | undefined,
   ): ReviewerReviewStatus {
     if (!reviewerLastCommentedAt) {
       return 'new';
@@ -374,7 +385,7 @@ export class GitLabClient {
   private async buildReviewerMergeRequestChecks(
     mergeRequest: MergeRequest,
     currentUserId: number,
-    latestCommitAtInput?: string
+    latestCommitAtInput?: string,
   ): Promise<ReviewerMergeRequestChecks> {
     const notes = await this.getMergeRequestNotes(mergeRequest);
     const mrAuthorId = mergeRequest.author?.id;
@@ -389,7 +400,11 @@ export class GitLabClient {
       const noteAuthorId = note.author?.id;
       if (noteAuthorId === currentUserId && !reviewerLastCommentedAt) {
         reviewerLastCommentedAt = note.created_at;
-      } else if (typeof mrAuthorId === 'number' && noteAuthorId === mrAuthorId && !authorLastCommentedAt) {
+      } else if (
+        typeof mrAuthorId === 'number' &&
+        noteAuthorId === mrAuthorId &&
+        !authorLastCommentedAt
+      ) {
         authorLastCommentedAt = note.created_at;
       }
 
@@ -399,36 +414,47 @@ export class GitLabClient {
     }
 
     const latestCommitAt = latestCommitAtInput ?? (await this.getLatestCommitAt(mergeRequest));
-    const reviewStatus = this.resolveReviewStatus(reviewerLastCommentedAt, latestCommitAt, authorLastCommentedAt);
+    const reviewStatus = this.resolveReviewStatus(
+      reviewerLastCommentedAt,
+      latestCommitAt,
+      authorLastCommentedAt,
+    );
 
     return {
       reviewStatus,
       reviewerLastCommentedAt,
       latestCommitAt,
-      authorLastCommentedAt
+      authorLastCommentedAt,
     };
   }
 
   async buildHealthSignals(
     mergeRequests: MergeRequest[],
     currentUserId: number,
-    options?: BuildHealthSignalsOptions
+    options?: BuildHealthSignalsOptions,
   ): Promise<MergeRequestHealth[]> {
     return Promise.all(
       mergeRequests.map(async (mergeRequest) => {
         const approvalsRequired = mergeRequest.approvals_required ?? 0;
         const approvedCount = mergeRequest.approved_by?.length ?? 0;
         const isCreatedByMe = mergeRequest.author?.id === currentUserId;
-        const shouldIncludeLatestCommitAt = options?.includeLatestCommitAt || options?.includeReviewerChecks;
+        const shouldIncludeLatestCommitAt =
+          options?.includeLatestCommitAt || options?.includeReviewerChecks;
         const [details, ownMrChecks, latestCommitAt] = await Promise.all([
           this.getMergeRequestDetails(mergeRequest),
-          isCreatedByMe ? this.buildOwnMergeRequestChecks(mergeRequest) : Promise.resolve(undefined),
-          shouldIncludeLatestCommitAt ? this.getLatestCommitAt(mergeRequest) : Promise.resolve(undefined)
+          isCreatedByMe
+            ? this.buildOwnMergeRequestChecks(mergeRequest)
+            : Promise.resolve(undefined),
+          shouldIncludeLatestCommitAt
+            ? this.getLatestCommitAt(mergeRequest)
+            : Promise.resolve(undefined),
         ]);
         const reviewerChecks = options?.includeReviewerChecks
           ? await this.buildReviewerMergeRequestChecks(mergeRequest, currentUserId, latestCommitAt)
           : undefined;
-        const ciStatus = ownMrChecks?.ciStatus ?? this.toCiStatus(this.getNormalizedCiStatus(mergeRequest, details), details);
+        const ciStatus =
+          ownMrChecks?.ciStatus ??
+          this.toCiStatus(this.getNormalizedCiStatus(mergeRequest, details), details);
         const hasFailedCi = ciStatus === 'failed';
 
         return {
@@ -440,9 +466,9 @@ export class GitLabClient {
           isCreatedByMe,
           latestCommitAt,
           ownMrChecks,
-          reviewerChecks
+          reviewerChecks,
         };
-      })
+      }),
     );
   }
 }

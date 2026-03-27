@@ -7,13 +7,13 @@ const meta = {
   component: Badge,
   tags: ['autodocs'],
   args: {
-    children: 'Status'
+    children: 'Status',
   },
   argTypes: {
     className: {
-      control: false
-    }
-  }
+      control: false,
+    },
+  },
 } satisfies Meta<typeof Badge>;
 
 export default meta;
@@ -37,5 +37,5 @@ export const StatusSet: Story = {
       <Badge variant="destructive">CI failed</Badge>
       <Badge variant="outline">Review requested</Badge>
     </div>
-  )
+  ),
 };

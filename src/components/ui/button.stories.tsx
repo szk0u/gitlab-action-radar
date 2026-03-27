@@ -7,13 +7,13 @@ const meta = {
   component: Button,
   tags: ['autodocs'],
   args: {
-    children: 'Refresh'
+    children: 'Refresh',
   },
   argTypes: {
     className: {
-      control: false
-    }
-  }
+      control: false,
+    },
+  },
 } satisfies Meta<typeof Button>;
 
 export default meta;
@@ -32,7 +32,7 @@ export const Variants: Story = {
       <Button variant="destructive">Destructive</Button>
       <Button variant="link">Link</Button>
     </div>
-  )
+  ),
 };
 
 export const Sizes: Story = {
@@ -45,5 +45,5 @@ export const Sizes: Story = {
         <Plus />
       </Button>
     </div>
-  )
+  ),
 };

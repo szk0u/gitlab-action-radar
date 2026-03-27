@@ -4,7 +4,7 @@ import {
   requestPermission as requestNotificationPermissionApi,
   sendNotification,
   registerActionTypes,
-  onAction
+  onAction,
 } from '@tauri-apps/plugin-notification';
 import { Store } from '@tauri-apps/plugin-store';
 import { RefreshCw } from 'lucide-react';
@@ -15,12 +15,17 @@ import { Button } from './components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
 import { Input } from './components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
-import { AssignedAlertSnapshot, AssignedAlertDiff, buildAssignedAlertSnapshot, detectAssignedAlertDiff } from './lib/assignedAlertDiff';
+import {
+  AssignedAlertSnapshot,
+  AssignedAlertDiff,
+  buildAssignedAlertSnapshot,
+  detectAssignedAlertDiff,
+} from './lib/assignedAlertDiff';
 import {
   ActiveIgnoredAssignedSignals,
   IgnoredAssignedAlertState,
   applyIgnoredAssignedAlertsUntilNewCommit,
-  toCommitSignature
+  toCommitSignature,
 } from './lib/ignoredAssignedAlerts';
 import { MergeRequestHealth } from './types/gitlab';
 
@@ -38,8 +43,13 @@ const missingPatTokenMessage = isGitlabTokenFromEnvBlocked
     ? `${personalAccessTokenLabel} を保存するか、VITE_GITLAB_TOKEN を設定してください。`
     : `${personalAccessTokenLabel} を保存してください。`;
 const gitlabPatIssuePageBaseUrl =
-  import.meta.env.VITE_GITLAB_PAT_ISSUE_URL ?? `${gitlabBaseUrl.replace(/\/$/, '')}/-/user_settings/personal_access_tokens`;
-const gitlabPatIssueUrl = buildGitlabPatIssueUrl(gitlabPatIssuePageBaseUrl, gitlabPatIssueTokenName, gitlabPatMinimumScope);
+  import.meta.env.VITE_GITLAB_PAT_ISSUE_URL ??
+  `${gitlabBaseUrl.replace(/\/$/, '')}/-/user_settings/personal_access_tokens`;
+const gitlabPatIssueUrl = buildGitlabPatIssueUrl(
+  gitlabPatIssuePageBaseUrl,
+  gitlabPatIssueTokenName,
+  gitlabPatMinimumScope,
+);
 const localStorageReviewReminderEnabledKey = 'review-reminder-enabled';
 const localStorageReviewReminderTimesKey = 'review-reminder-times';
 const localStorageReviewReminderLegacyTimeKey = 'review-reminder-time';
@@ -101,7 +111,14 @@ function parseTime(value: string): { hours: number; minutes: number } | undefine
 
   const hours = Number(match[1]);
   const minutes = Number(match[2]);
-  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+  if (
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes) ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
     return undefined;
   }
 
@@ -130,7 +147,9 @@ function resolveInitialReminderTimes(rawTimes: string | null, legacyTime: string
     try {
       const parsed = JSON.parse(rawTimes) as unknown;
       if (Array.isArray(parsed)) {
-        return normalizeReminderTimes(parsed.filter((value): value is string => typeof value === 'string'));
+        return normalizeReminderTimes(
+          parsed.filter((value): value is string => typeof value === 'string'),
+        );
       }
     } catch {
       // Ignore malformed storage and fallback to legacy/default below.
@@ -224,14 +243,18 @@ function normalizeAssignedAlertSnapshotEntries(rawEntries: unknown): AssignedAle
     }
 
     const entry = rawEntry as Partial<AssignedAlertSnapshotEntry>;
-    if (typeof entry.mergeRequestId !== 'number' || !Number.isInteger(entry.mergeRequestId) || entry.mergeRequestId <= 0) {
+    if (
+      typeof entry.mergeRequestId !== 'number' ||
+      !Number.isInteger(entry.mergeRequestId) ||
+      entry.mergeRequestId <= 0
+    ) {
       continue;
     }
 
     deduped.set(entry.mergeRequestId, {
       mergeRequestId: entry.mergeRequestId,
       hasConflicts: entry.hasConflicts === true,
-      hasFailedCi: entry.hasFailedCi === true
+      hasFailedCi: entry.hasFailedCi === true,
     });
   }
 
@@ -259,24 +282,28 @@ function parseAssignedAlertSnapshotUserId(value: string | null): number | undefi
   return normalizeSettingsUserId(parsed);
 }
 
-function restoreAssignedAlertSnapshot(entries: AssignedAlertSnapshotEntry[]): Map<number, AssignedAlertSnapshot> {
+function restoreAssignedAlertSnapshot(
+  entries: AssignedAlertSnapshotEntry[],
+): Map<number, AssignedAlertSnapshot> {
   const snapshot = new Map<number, AssignedAlertSnapshot>();
   for (const entry of entries) {
     snapshot.set(entry.mergeRequestId, {
       hasConflicts: entry.hasConflicts,
-      hasFailedCi: entry.hasFailedCi
+      hasFailedCi: entry.hasFailedCi,
     });
   }
   return snapshot;
 }
 
-function serializeAssignedAlertSnapshotEntries(snapshot: ReadonlyMap<number, AssignedAlertSnapshot>): AssignedAlertSnapshotEntry[] {
+function serializeAssignedAlertSnapshotEntries(
+  snapshot: ReadonlyMap<number, AssignedAlertSnapshot>,
+): AssignedAlertSnapshotEntry[] {
   return [...snapshot.entries()]
     .sort((left, right) => left[0] - right[0])
     .map(([mergeRequestId, value]) => ({
       mergeRequestId,
       hasConflicts: value.hasConflicts,
-      hasFailedCi: value.hasFailedCi
+      hasFailedCi: value.hasFailedCi,
     }));
 }
 
@@ -292,12 +319,18 @@ function normalizeIgnoredAssignedAlertEntries(rawEntries: unknown): IgnoredAssig
     }
 
     const entry = rawEntry as Partial<IgnoredAssignedAlertEntry>;
-    if (typeof entry.mergeRequestId !== 'number' || !Number.isInteger(entry.mergeRequestId) || entry.mergeRequestId <= 0) {
+    if (
+      typeof entry.mergeRequestId !== 'number' ||
+      !Number.isInteger(entry.mergeRequestId) ||
+      entry.mergeRequestId <= 0
+    ) {
       continue;
     }
     const hasIgnoreConflicts = typeof entry.ignoreConflicts === 'boolean';
     const hasIgnoreFailedCi = typeof entry.ignoreFailedCi === 'boolean';
-    const ignoreConflicts = hasIgnoreConflicts ? entry.ignoreConflicts === true : !hasIgnoreFailedCi;
+    const ignoreConflicts = hasIgnoreConflicts
+      ? entry.ignoreConflicts === true
+      : !hasIgnoreFailedCi;
     const ignoreFailedCi = hasIgnoreFailedCi ? entry.ignoreFailedCi === true : !hasIgnoreConflicts;
     if (!ignoreConflicts && !ignoreFailedCi) {
       continue;
@@ -305,9 +338,10 @@ function normalizeIgnoredAssignedAlertEntries(rawEntries: unknown): IgnoredAssig
 
     deduped.set(entry.mergeRequestId, {
       mergeRequestId: entry.mergeRequestId,
-      commitSignature: typeof entry.commitSignature === 'string' ? entry.commitSignature : 'no-commit',
+      commitSignature:
+        typeof entry.commitSignature === 'string' ? entry.commitSignature : 'no-commit',
       ignoreConflicts,
-      ignoreFailedCi
+      ignoreFailedCi,
     });
   }
 
@@ -335,32 +369,36 @@ function parseIgnoredAssignedAlertsUserId(value: string | null): number | undefi
   return normalizeSettingsUserId(parsed);
 }
 
-function restoreIgnoredAssignedAlerts(entries: IgnoredAssignedAlertEntry[]): Map<number, IgnoredAssignedAlertState> {
+function restoreIgnoredAssignedAlerts(
+  entries: IgnoredAssignedAlertEntry[],
+): Map<number, IgnoredAssignedAlertState> {
   const state = new Map<number, IgnoredAssignedAlertState>();
   for (const entry of entries) {
     state.set(entry.mergeRequestId, {
       commitSignature: entry.commitSignature,
       ignoreConflicts: entry.ignoreConflicts,
-      ignoreFailedCi: entry.ignoreFailedCi
+      ignoreFailedCi: entry.ignoreFailedCi,
     });
   }
   return state;
 }
 
-function serializeIgnoredAssignedAlerts(snapshot: ReadonlyMap<number, IgnoredAssignedAlertState>): IgnoredAssignedAlertEntry[] {
+function serializeIgnoredAssignedAlerts(
+  snapshot: ReadonlyMap<number, IgnoredAssignedAlertState>,
+): IgnoredAssignedAlertEntry[] {
   return [...snapshot.entries()]
     .sort((left, right) => left[0] - right[0])
     .map(([mergeRequestId, value]) => ({
       mergeRequestId,
       commitSignature: value.commitSignature,
       ignoreConflicts: value.ignoreConflicts === true,
-      ignoreFailedCi: value.ignoreFailedCi === true
+      ignoreFailedCi: value.ignoreFailedCi === true,
     }));
 }
 
 function suppressIgnoredAssignedSignals(
   items: MergeRequestHealth[],
-  activeIgnoredSignals: ReadonlyMap<number, ActiveIgnoredAssignedSignals>
+  activeIgnoredSignals: ReadonlyMap<number, ActiveIgnoredAssignedSignals>,
 ): MergeRequestHealth[] {
   return items.map((item) => {
     const activeIgnored = activeIgnoredSignals.get(item.mergeRequest.id);
@@ -377,7 +415,7 @@ function suppressIgnoredAssignedSignals(
     return {
       ...item,
       hasConflicts: nextHasConflicts,
-      hasFailedCi: nextHasFailedCi
+      hasFailedCi: nextHasFailedCi,
     };
   });
 }
@@ -417,14 +455,19 @@ function serializeSettings(settings: AppSettings): string {
 function normalizeAppSettings(payload: AppSettingsPayload | null | undefined): AppSettings {
   const times =
     payload && Array.isArray(payload.reviewReminderTimes)
-      ? normalizeReminderTimes(payload.reviewReminderTimes.filter((value): value is string => typeof value === 'string'))
+      ? normalizeReminderTimes(
+          payload.reviewReminderTimes.filter((value): value is string => typeof value === 'string'),
+        )
       : ['09:00'];
   const notifiedSlots =
     payload && Array.isArray(payload.notifiedReviewReminderSlots)
-      ? payload.notifiedReviewReminderSlots.filter((slot): slot is string => typeof slot === 'string')
+      ? payload.notifiedReviewReminderSlots.filter(
+          (slot): slot is string => typeof slot === 'string',
+        )
       : [];
   const assignedAlertSnapshotUserId = normalizeSettingsUserId(payload?.assignedAlertSnapshotUserId);
-  const assignedAlertSnapshotInitialized = payload?.assignedAlertSnapshotInitialized === true && assignedAlertSnapshotUserId != null;
+  const assignedAlertSnapshotInitialized =
+    payload?.assignedAlertSnapshotInitialized === true && assignedAlertSnapshotUserId != null;
   const assignedAlertSnapshot = assignedAlertSnapshotInitialized
     ? normalizeAssignedAlertSnapshotEntries(payload?.assignedAlertSnapshot)
     : [];
@@ -438,14 +481,17 @@ function normalizeAppSettings(payload: AppSettingsPayload | null | undefined): A
     reviewReminderEnabled: payload?.reviewReminderEnabled === true,
     reviewReminderTimes: times,
     notifiedReviewReminderSlots: notifiedSlots,
-    autoPollingEnabled: payload?.autoPollingEnabled == null ? true : payload.autoPollingEnabled === true,
-    autoPollingIntervalMinutes: normalizePollingIntervalMinutes(payload?.autoPollingIntervalMinutes ?? defaultAutoPollingIntervalMinutes),
+    autoPollingEnabled:
+      payload?.autoPollingEnabled == null ? true : payload.autoPollingEnabled === true,
+    autoPollingIntervalMinutes: normalizePollingIntervalMinutes(
+      payload?.autoPollingIntervalMinutes ?? defaultAutoPollingIntervalMinutes,
+    ),
     showInCommandTab: payload?.showInCommandTab == null ? true : payload.showInCommandTab === true,
     assignedAlertSnapshot,
     assignedAlertSnapshotInitialized,
     assignedAlertSnapshotUserId,
     ignoredAssignedAlerts,
-    ignoredAssignedAlertsUserId
+    ignoredAssignedAlertsUserId,
   };
 }
 
@@ -457,19 +503,37 @@ function loadLegacyLocalStorageSettings(): AppSettings {
   const enabledValue = window.localStorage.getItem(localStorageReviewReminderEnabledKey);
   const timesValue = window.localStorage.getItem(localStorageReviewReminderTimesKey);
   const legacyTimeValue = window.localStorage.getItem(localStorageReviewReminderLegacyTimeKey);
-  const notifiedSlotsValue = window.localStorage.getItem(localStorageReviewReminderNotifiedSlotsKey);
+  const notifiedSlotsValue = window.localStorage.getItem(
+    localStorageReviewReminderNotifiedSlotsKey,
+  );
   const autoPollingEnabledValue = window.localStorage.getItem(localStorageAutoPollingEnabledKey);
-  const autoPollingIntervalMinutesValue = window.localStorage.getItem(localStorageAutoPollingIntervalMinutesKey);
+  const autoPollingIntervalMinutesValue = window.localStorage.getItem(
+    localStorageAutoPollingIntervalMinutesKey,
+  );
   const showInCommandTabValue = window.localStorage.getItem(localStorageShowInCommandTabKey);
-  const assignedAlertSnapshotValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotKey);
-  const assignedAlertSnapshotInitializedValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotInitializedKey);
-  const assignedAlertSnapshotUserIdValue = window.localStorage.getItem(localStorageAssignedAlertSnapshotUserIdKey);
-  const ignoredAssignedAlertsValue = window.localStorage.getItem(localStorageIgnoredAssignedAlertsKey);
-  const ignoredAssignedAlertsUserIdValue = window.localStorage.getItem(localStorageIgnoredAssignedAlertsUserIdKey);
-  const assignedAlertSnapshotUserId = parseAssignedAlertSnapshotUserId(assignedAlertSnapshotUserIdValue);
+  const assignedAlertSnapshotValue = window.localStorage.getItem(
+    localStorageAssignedAlertSnapshotKey,
+  );
+  const assignedAlertSnapshotInitializedValue = window.localStorage.getItem(
+    localStorageAssignedAlertSnapshotInitializedKey,
+  );
+  const assignedAlertSnapshotUserIdValue = window.localStorage.getItem(
+    localStorageAssignedAlertSnapshotUserIdKey,
+  );
+  const ignoredAssignedAlertsValue = window.localStorage.getItem(
+    localStorageIgnoredAssignedAlertsKey,
+  );
+  const ignoredAssignedAlertsUserIdValue = window.localStorage.getItem(
+    localStorageIgnoredAssignedAlertsUserIdKey,
+  );
+  const assignedAlertSnapshotUserId = parseAssignedAlertSnapshotUserId(
+    assignedAlertSnapshotUserIdValue,
+  );
   const assignedAlertSnapshotInitialized =
     assignedAlertSnapshotInitializedValue === 'true' && assignedAlertSnapshotUserId != null;
-  const ignoredAssignedAlertsUserId = parseIgnoredAssignedAlertsUserId(ignoredAssignedAlertsUserIdValue);
+  const ignoredAssignedAlertsUserId = parseIgnoredAssignedAlertsUserId(
+    ignoredAssignedAlertsUserIdValue,
+  );
 
   return {
     reviewReminderEnabled: enabledValue === 'true',
@@ -478,11 +542,16 @@ function loadLegacyLocalStorageSettings(): AppSettings {
     autoPollingEnabled: autoPollingEnabledValue == null ? true : autoPollingEnabledValue === 'true',
     autoPollingIntervalMinutes: parseAutoPollingIntervalMinutes(autoPollingIntervalMinutesValue),
     showInCommandTab: parseShowInCommandTab(showInCommandTabValue),
-    assignedAlertSnapshot: assignedAlertSnapshotInitialized ? parseAssignedAlertSnapshotEntries(assignedAlertSnapshotValue) : [],
+    assignedAlertSnapshot: assignedAlertSnapshotInitialized
+      ? parseAssignedAlertSnapshotEntries(assignedAlertSnapshotValue)
+      : [],
     assignedAlertSnapshotInitialized,
     assignedAlertSnapshotUserId,
-    ignoredAssignedAlerts: ignoredAssignedAlertsUserId != null ? parseIgnoredAssignedAlertEntries(ignoredAssignedAlertsValue) : [],
-    ignoredAssignedAlertsUserId
+    ignoredAssignedAlerts:
+      ignoredAssignedAlertsUserId != null
+        ? parseIgnoredAssignedAlertEntries(ignoredAssignedAlertsValue)
+        : [],
+    ignoredAssignedAlertsUserId,
   };
 }
 
@@ -491,29 +560,56 @@ function saveSettingsToLegacyLocalStorage(settings: AppSettings): void {
     return;
   }
 
-  window.localStorage.setItem(localStorageReviewReminderEnabledKey, String(settings.reviewReminderEnabled));
-  window.localStorage.setItem(localStorageReviewReminderTimesKey, JSON.stringify(settings.reviewReminderTimes));
-  window.localStorage.setItem(localStorageReviewReminderNotifiedSlotsKey, JSON.stringify(settings.notifiedReviewReminderSlots));
-  window.localStorage.setItem(localStorageAutoPollingEnabledKey, String(settings.autoPollingEnabled));
-  window.localStorage.setItem(localStorageAutoPollingIntervalMinutesKey, String(settings.autoPollingIntervalMinutes));
+  window.localStorage.setItem(
+    localStorageReviewReminderEnabledKey,
+    String(settings.reviewReminderEnabled),
+  );
+  window.localStorage.setItem(
+    localStorageReviewReminderTimesKey,
+    JSON.stringify(settings.reviewReminderTimes),
+  );
+  window.localStorage.setItem(
+    localStorageReviewReminderNotifiedSlotsKey,
+    JSON.stringify(settings.notifiedReviewReminderSlots),
+  );
+  window.localStorage.setItem(
+    localStorageAutoPollingEnabledKey,
+    String(settings.autoPollingEnabled),
+  );
+  window.localStorage.setItem(
+    localStorageAutoPollingIntervalMinutesKey,
+    String(settings.autoPollingIntervalMinutes),
+  );
   window.localStorage.setItem(localStorageShowInCommandTabKey, String(settings.showInCommandTab));
-  window.localStorage.setItem(localStorageAssignedAlertSnapshotKey, JSON.stringify(settings.assignedAlertSnapshot));
-  window.localStorage.setItem(localStorageIgnoredAssignedAlertsKey, JSON.stringify(settings.ignoredAssignedAlerts));
+  window.localStorage.setItem(
+    localStorageAssignedAlertSnapshotKey,
+    JSON.stringify(settings.assignedAlertSnapshot),
+  );
+  window.localStorage.setItem(
+    localStorageIgnoredAssignedAlertsKey,
+    JSON.stringify(settings.ignoredAssignedAlerts),
+  );
   window.localStorage.setItem(
     localStorageAssignedAlertSnapshotInitializedKey,
-    String(settings.assignedAlertSnapshotInitialized)
+    String(settings.assignedAlertSnapshotInitialized),
   );
 
   if (settings.assignedAlertSnapshotUserId == null) {
     window.localStorage.removeItem(localStorageAssignedAlertSnapshotUserIdKey);
   } else {
-    window.localStorage.setItem(localStorageAssignedAlertSnapshotUserIdKey, String(settings.assignedAlertSnapshotUserId));
+    window.localStorage.setItem(
+      localStorageAssignedAlertSnapshotUserIdKey,
+      String(settings.assignedAlertSnapshotUserId),
+    );
   }
 
   if (settings.ignoredAssignedAlertsUserId == null) {
     window.localStorage.removeItem(localStorageIgnoredAssignedAlertsUserIdKey);
   } else {
-    window.localStorage.setItem(localStorageIgnoredAssignedAlertsUserIdKey, String(settings.ignoredAssignedAlertsUserId));
+    window.localStorage.setItem(
+      localStorageIgnoredAssignedAlertsUserIdKey,
+      String(settings.ignoredAssignedAlertsUserId),
+    );
   }
 }
 
@@ -586,7 +682,7 @@ function summarizeReviewStatusCounts(items: MergeRequestHealth[]): ReviewStatusC
     total: items.length,
     needsReview: 0,
     waitingForAuthor: 0,
-    new: 0
+    new: 0,
   };
 
   for (const item of items) {
@@ -607,7 +703,7 @@ function summarizeReviewStatusCounts(items: MergeRequestHealth[]): ReviewStatusC
 
 function summarizeTrayIndicator(
   assigned: MergeRequestHealth[],
-  reviewRequested: MergeRequestHealth[]
+  reviewRequested: MergeRequestHealth[],
 ): TrayIndicatorSummary {
   let conflictCount = 0;
   let failedCiCount = 0;
@@ -638,7 +734,7 @@ function summarizeTrayIndicator(
     conflictCount,
     failedCiCount,
     reviewPendingCount,
-    actionableTotalCount: actionableMergeRequestIds.size
+    actionableTotalCount: actionableMergeRequestIds.size,
   };
 }
 
@@ -691,18 +787,30 @@ export function App() {
   const [reviewReminderTimeInput, setReviewReminderTimeInput] = useState('09:00');
   const [notifiedReviewReminderSlots, setNotifiedReviewReminderSlots] = useState<string[]>([]);
   const [reviewReminderMessage, setReviewReminderMessage] = useState<string | undefined>();
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(() =>
-    getNotificationPermissionState()
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermissionState>(
+    () => getNotificationPermissionState(),
   );
   const [autoPollingEnabled, setAutoPollingEnabled] = useState(true);
-  const [autoPollingIntervalMinutes, setAutoPollingIntervalMinutes] = useState(defaultAutoPollingIntervalMinutes);
+  const [autoPollingIntervalMinutes, setAutoPollingIntervalMinutes] = useState(
+    defaultAutoPollingIntervalMinutes,
+  );
   const [showInCommandTab, setShowInCommandTab] = useState(true);
-  const [assignedAlertSnapshotEntries, setAssignedAlertSnapshotEntries] = useState<AssignedAlertSnapshotEntry[]>([]);
+  const [assignedAlertSnapshotEntries, setAssignedAlertSnapshotEntries] = useState<
+    AssignedAlertSnapshotEntry[]
+  >([]);
   const [assignedAlertSnapshotInitialized, setAssignedAlertSnapshotInitialized] = useState(false);
-  const [assignedAlertSnapshotUserId, setAssignedAlertSnapshotUserId] = useState<number | undefined>();
-  const [ignoredAssignedAlertEntries, setIgnoredAssignedAlertEntries] = useState<IgnoredAssignedAlertEntry[]>([]);
-  const [ignoredAssignedAlertsUserId, setIgnoredAssignedAlertsUserId] = useState<number | undefined>();
-  const [tabNavigationRequest, setTabNavigationRequest] = useState<TabNavigationRequest | undefined>();
+  const [assignedAlertSnapshotUserId, setAssignedAlertSnapshotUserId] = useState<
+    number | undefined
+  >();
+  const [ignoredAssignedAlertEntries, setIgnoredAssignedAlertEntries] = useState<
+    IgnoredAssignedAlertEntry[]
+  >([]);
+  const [ignoredAssignedAlertsUserId, setIgnoredAssignedAlertsUserId] = useState<
+    number | undefined
+  >();
+  const [tabNavigationRequest, setTabNavigationRequest] = useState<
+    TabNavigationRequest | undefined
+  >();
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const loadInFlightRef = useRef(false);
   const assignedAlertSnapshotRef = useRef<Map<number, AssignedAlertSnapshot>>(new Map());
@@ -722,22 +830,25 @@ export function App() {
     settingsStoreRef.current = store;
     return store;
   }, []);
-  const saveAppSettings = useCallback(async (settings: AppSettings): Promise<void> => {
-    const serializedSettings = serializeSettings(settings);
-    if (lastPersistedSettingsRef.current === serializedSettings) {
-      return;
-    }
+  const saveAppSettings = useCallback(
+    async (settings: AppSettings): Promise<void> => {
+      const serializedSettings = serializeSettings(settings);
+      if (lastPersistedSettingsRef.current === serializedSettings) {
+        return;
+      }
 
-    if (isTauriRuntime()) {
-      const settingsStore = await getSettingsStore();
-      await settingsStore.set(appSettingsStoreKey, settings);
-      await settingsStore.save();
-    } else {
-      saveSettingsToLegacyLocalStorage(settings);
-    }
+      if (isTauriRuntime()) {
+        const settingsStore = await getSettingsStore();
+        await settingsStore.set(appSettingsStoreKey, settings);
+        await settingsStore.save();
+      } else {
+        saveSettingsToLegacyLocalStorage(settings);
+      }
 
-    lastPersistedSettingsRef.current = serializedSettings;
-  }, [getSettingsStore]);
+      lastPersistedSettingsRef.current = serializedSettings;
+    },
+    [getSettingsStore],
+  );
 
   const client = useMemo(() => {
     if (!patToken) {
@@ -751,9 +862,9 @@ export function App() {
       ignoredAssignedAlertEntries.map((entry) => ({
         mergeRequestId: entry.mergeRequestId,
         ignoreConflicts: entry.ignoreConflicts,
-        ignoreFailedCi: entry.ignoreFailedCi
+        ignoreFailedCi: entry.ignoreFailedCi,
       })),
-    [ignoredAssignedAlertEntries]
+    [ignoredAssignedAlertEntries],
   );
 
   useEffect(() => {
@@ -773,12 +884,16 @@ export function App() {
       setAssignedAlertSnapshotEntries(settings.assignedAlertSnapshot);
       setAssignedAlertSnapshotInitialized(settings.assignedAlertSnapshotInitialized);
       setAssignedAlertSnapshotUserId(settings.assignedAlertSnapshotUserId);
-      assignedAlertSnapshotRef.current = restoreAssignedAlertSnapshot(settings.assignedAlertSnapshot);
+      assignedAlertSnapshotRef.current = restoreAssignedAlertSnapshot(
+        settings.assignedAlertSnapshot,
+      );
       assignedAlertSnapshotInitializedRef.current = settings.assignedAlertSnapshotInitialized;
       assignedAlertSnapshotUserIdRef.current = settings.assignedAlertSnapshotUserId;
       setIgnoredAssignedAlertEntries(settings.ignoredAssignedAlerts);
       setIgnoredAssignedAlertsUserId(settings.ignoredAssignedAlertsUserId);
-      ignoredAssignedAlertsRef.current = restoreIgnoredAssignedAlerts(settings.ignoredAssignedAlerts);
+      ignoredAssignedAlertsRef.current = restoreIgnoredAssignedAlerts(
+        settings.ignoredAssignedAlerts,
+      );
       ignoredAssignedAlertsUserIdRef.current = settings.ignoredAssignedAlertsUserId;
     };
 
@@ -852,7 +967,9 @@ export function App() {
         } else {
           setPatToken(gitlabTokenFromEnv);
           setHasSavedPatToken(false);
-          setAuthMessage(isGitlabTokenFromEnvBlocked ? gitlabTokenFromEnvBlockedMessage : undefined);
+          setAuthMessage(
+            isGitlabTokenFromEnvBlocked ? gitlabTokenFromEnvBlockedMessage : undefined,
+          );
         }
       } catch (err) {
         if (!alive) {
@@ -916,14 +1033,17 @@ export function App() {
     window.requestAnimationFrame(scroll);
   }, []);
 
-  const requestTabNavigation = useCallback((tab: TabKey) => {
-    setActiveMainTab('radar');
-    setTabNavigationRequest((previous) => ({
-      tab,
-      nonce: (previous?.nonce ?? 0) + 1
-    }));
-    scrollToTop();
-  }, [scrollToTop]);
+  const requestTabNavigation = useCallback(
+    (tab: TabKey) => {
+      setActiveMainTab('radar');
+      setTabNavigationRequest((previous) => ({
+        tab,
+        nonce: (previous?.nonce ?? 0) + 1,
+      }));
+      scrollToTop();
+    },
+    [scrollToTop],
+  );
 
   const consumePendingNotificationTab = useCallback(async () => {
     if (!isTauriRuntime()) {
@@ -944,21 +1064,22 @@ export function App() {
     void openExternalUrl(gitlabPatIssueUrl);
   };
 
-  const ensureNotificationPermissionForSend = useCallback(async (): Promise<NotificationPermissionState> => {
-    const currentPermission = getNotificationPermissionState();
-    if (currentPermission === 'unsupported') {
-      setNotificationPermission(currentPermission);
-      return currentPermission;
-    }
+  const ensureNotificationPermissionForSend =
+    useCallback(async (): Promise<NotificationPermissionState> => {
+      const currentPermission = getNotificationPermissionState();
+      if (currentPermission === 'unsupported') {
+        setNotificationPermission(currentPermission);
+        return currentPermission;
+      }
 
-    let nextPermission: NotificationPermissionState = currentPermission;
-    if (currentPermission === 'default') {
-      nextPermission = await requestNotificationPermission();
-    }
+      let nextPermission: NotificationPermissionState = currentPermission;
+      if (currentPermission === 'default') {
+        nextPermission = await requestNotificationPermission();
+      }
 
-    setNotificationPermission(nextPermission);
-    return nextPermission;
-  }, []);
+      setNotificationPermission(nextPermission);
+      return nextPermission;
+    }, []);
 
   const refreshNotificationPermission = useCallback(() => {
     setNotificationPermission(getNotificationPermissionState());
@@ -1051,10 +1172,12 @@ export function App() {
 
     const setup = async () => {
       try {
-        await registerActionTypes([{
-          id: 'open-tab',
-          actions: [{ id: 'open', title: 'Open', foreground: true }]
-        }]);
+        await registerActionTypes([
+          {
+            id: 'open-tab',
+            actions: [{ id: 'open', title: 'Open', foreground: true }],
+          },
+        ]);
       } catch {
         // Action type registration may fail on some platforms; continue anyway.
       }
@@ -1110,14 +1233,17 @@ export function App() {
     };
   }, [consumePendingNotificationTab]);
 
-  const sendClickableNotification = useCallback(async (options: { title: string; body: string; openTab: TabKey }) => {
-    sendNotification({
-      title: options.title,
-      body: options.body,
-      actionTypeId: 'open-tab',
-      extra: { openTab: options.openTab }
-    });
-  }, []);
+  const sendClickableNotification = useCallback(
+    async (options: { title: string; body: string; openTab: TabKey }) => {
+      sendNotification({
+        title: options.title,
+        body: options.body,
+        actionTypeId: 'open-tab',
+        extra: { openTab: options.openTab },
+      });
+    },
+    [],
+  );
 
   const sendTestNotification = useCallback(async () => {
     const permission = await ensureNotificationPermissionForSend();
@@ -1135,7 +1261,7 @@ export function App() {
       sendNotification({
         title: 'GitLab Action Radar',
         body: 'テスト通知です。通知一覧に表示されるか確認してください。',
-        actionTypeId: 'open-tab'
+        actionTypeId: 'open-tab',
       });
       setReviewReminderMessage('テスト通知を送信しました。');
     } catch (err) {
@@ -1171,56 +1297,62 @@ export function App() {
     setReviewReminderTimes((previous) => previous.filter((item) => item !== time));
   }, []);
 
-  const notifyReviewReminder = useCallback(async (counts: ReviewStatusCounts, scheduledTime: string) => {
-    if (counts.total <= 0) {
-      return;
-    }
+  const notifyReviewReminder = useCallback(
+    async (counts: ReviewStatusCounts, scheduledTime: string) => {
+      if (counts.total <= 0) {
+        return;
+      }
 
-    const permission = await ensureNotificationPermissionForSend();
-    if (permission === 'unsupported') {
-      setReviewReminderMessage('この環境では通知機能を利用できません。');
-      return;
-    }
+      const permission = await ensureNotificationPermissionForSend();
+      if (permission === 'unsupported') {
+        setReviewReminderMessage('この環境では通知機能を利用できません。');
+        return;
+      }
 
-    if (permission !== 'granted') {
-      setReviewReminderMessage('通知が許可されていないため、リマインドを送信できません。');
-      return;
-    }
+      if (permission !== 'granted') {
+        setReviewReminderMessage('通知が許可されていないため、リマインドを送信できません。');
+        return;
+      }
 
-    try {
-      await sendClickableNotification({
-        title: 'GitLab Action Radar',
-        body: `要レビュー ${counts.needsReview}件 / 作者修正待ち ${counts.waitingForAuthor}件 / 未着手 ${counts.new}件`,
-        openTab: 'review'
-      });
-      setReviewReminderMessage(
-        `リマインド通知を送信しました (${scheduledTime}) - 要レビュー ${counts.needsReview}件 / 作者修正待ち ${counts.waitingForAuthor}件 / 未着手 ${counts.new}件`
-      );
-    } catch (err) {
-      setReviewReminderMessage(`通知送信に失敗しました: ${toMessage(err)}`);
-    }
-  }, [ensureNotificationPermissionForSend, sendClickableNotification]);
+      try {
+        await sendClickableNotification({
+          title: 'GitLab Action Radar',
+          body: `要レビュー ${counts.needsReview}件 / 作者修正待ち ${counts.waitingForAuthor}件 / 未着手 ${counts.new}件`,
+          openTab: 'review',
+        });
+        setReviewReminderMessage(
+          `リマインド通知を送信しました (${scheduledTime}) - 要レビュー ${counts.needsReview}件 / 作者修正待ち ${counts.waitingForAuthor}件 / 未着手 ${counts.new}件`,
+        );
+      } catch (err) {
+        setReviewReminderMessage(`通知送信に失敗しました: ${toMessage(err)}`);
+      }
+    },
+    [ensureNotificationPermissionForSend, sendClickableNotification],
+  );
 
-  const notifyImmediateAssignedAlerts = useCallback(async (diff: AssignedAlertDiff) => {
-    if (diff.newlyConflicted.length === 0 && diff.newlyFailedCi.length === 0) {
-      return;
-    }
+  const notifyImmediateAssignedAlerts = useCallback(
+    async (diff: AssignedAlertDiff) => {
+      if (diff.newlyConflicted.length === 0 && diff.newlyFailedCi.length === 0) {
+        return;
+      }
 
-    const permission = await ensureNotificationPermissionForSend();
-    if (permission !== 'granted') {
-      return;
-    }
+      const permission = await ensureNotificationPermissionForSend();
+      if (permission !== 'granted') {
+        return;
+      }
 
-    try {
-      await sendClickableNotification({
-        title: 'GitLab Action Radar',
-        body: buildImmediateAlertNotificationBody(diff),
-        openTab: 'assigned'
-      });
-    } catch (err) {
-      setReviewReminderMessage(`即時通知の送信に失敗しました: ${toMessage(err)}`);
-    }
-  }, [ensureNotificationPermissionForSend, sendClickableNotification]);
+      try {
+        await sendClickableNotification({
+          title: 'GitLab Action Radar',
+          body: buildImmediateAlertNotificationBody(diff),
+          openTab: 'assigned',
+        });
+      } catch (err) {
+        setReviewReminderMessage(`即時通知の送信に失敗しました: ${toMessage(err)}`);
+      }
+    },
+    [ensureNotificationPermissionForSend, sendClickableNotification],
+  );
 
   const savePatToken = async () => {
     const token = patInput.trim();
@@ -1260,146 +1392,176 @@ export function App() {
         isGitlabTokenFromEnvBlocked
           ? `保存済みPATを削除しました。${gitlabTokenFromEnvBlockedMessage}`
           : gitlabTokenFromEnv
-          ? '保存済みPATを削除し、環境変数の PAT に戻しました。'
-          : '保存済みPATを削除しました。'
+            ? '保存済みPATを削除し、環境変数の PAT に戻しました。'
+            : '保存済みPATを削除しました。',
       );
     } catch (err) {
       setAuthMessage(`保存済みPATの削除に失敗しました: ${toMessage(err)}`);
     }
   };
 
-  const loadMergeRequests = useCallback(async (options?: { notifyReviewReminder?: boolean; reminderTime?: string; background?: boolean }) => {
-    if (loadInFlightRef.current) {
-      return;
-    }
-
-    if (!client) {
-      assignedAlertSnapshotRef.current = new Map();
-      assignedAlertSnapshotInitializedRef.current = false;
-      assignedAlertSnapshotUserIdRef.current = undefined;
-      ignoredAssignedAlertsRef.current = new Map();
-      ignoredAssignedAlertsUserIdRef.current = undefined;
-      setAssignedAlertSnapshotEntries([]);
-      setAssignedAlertSnapshotInitialized(false);
-      setAssignedAlertSnapshotUserId(undefined);
-      setIgnoredAssignedAlertEntries([]);
-      setIgnoredAssignedAlertsUserId(undefined);
-      setAssignedItems([]);
-      setReviewRequestedItems([]);
-      setLoading(false);
-      setError(missingPatTokenMessage);
-      await updateTrayIndicator({
-        conflictCount: 0,
-        failedCiCount: 0,
-        reviewPendingCount: 0,
-        actionableTotalCount: 0
-      });
-      return;
-    }
-
-    loadInFlightRef.current = true;
-    const background = options?.background === true;
-    if (!background) {
-      setLoading(true);
-    }
-    setError(undefined);
-    try {
-      const mergeRequests = await client.listMyRelevantMergeRequests();
-      const [rawAssignedSignals, reviewRequestedSignals] = await Promise.all([
-        client.buildHealthSignals(mergeRequests.assigned, mergeRequests.currentUserId, {
-          includeLatestCommitAt: true
-        }),
-        client.buildHealthSignals(mergeRequests.reviewRequested, mergeRequests.currentUserId, {
-          includeReviewerChecks: true
-        })
-      ]);
-      const sameIgnoredAssignedAlertsUser =
-        ignoredAssignedAlertsUserIdRef.current != null && ignoredAssignedAlertsUserIdRef.current === mergeRequests.currentUserId;
-      const previousIgnoredAssignedAlerts = sameIgnoredAssignedAlertsUser
-        ? ignoredAssignedAlertsRef.current
-        : new Map<number, IgnoredAssignedAlertState>();
-      const appliedIgnoredAssignedAlerts = applyIgnoredAssignedAlertsUntilNewCommit(rawAssignedSignals, previousIgnoredAssignedAlerts);
-      const actionableAssignedSignals = suppressIgnoredAssignedSignals(
-        rawAssignedSignals,
-        appliedIgnoredAssignedAlerts.activeIgnoredSignals
-      );
-      const nextIgnoredAssignedAlerts = appliedIgnoredAssignedAlerts.nextState;
-
-      ignoredAssignedAlertsRef.current = nextIgnoredAssignedAlerts;
-      ignoredAssignedAlertsUserIdRef.current = mergeRequests.currentUserId;
-      setIgnoredAssignedAlertEntries(serializeIgnoredAssignedAlerts(nextIgnoredAssignedAlerts));
-      setIgnoredAssignedAlertsUserId(mergeRequests.currentUserId);
-
-      const canCompareWithPreviousSnapshot =
-        assignedAlertSnapshotInitializedRef.current && assignedAlertSnapshotUserIdRef.current === mergeRequests.currentUserId;
-      const previousSnapshot = canCompareWithPreviousSnapshot ? assignedAlertSnapshotRef.current : new Map<number, AssignedAlertSnapshot>();
-      const assignedAlertDiff = detectAssignedAlertDiff(previousSnapshot, actionableAssignedSignals);
-      const nextAssignedAlertSnapshot = buildAssignedAlertSnapshot(actionableAssignedSignals);
-      assignedAlertSnapshotRef.current = nextAssignedAlertSnapshot;
-      assignedAlertSnapshotInitializedRef.current = true;
-      assignedAlertSnapshotUserIdRef.current = mergeRequests.currentUserId;
-      setAssignedAlertSnapshotEntries(serializeAssignedAlertSnapshotEntries(nextAssignedAlertSnapshot));
-      setAssignedAlertSnapshotInitialized(true);
-      setAssignedAlertSnapshotUserId(mergeRequests.currentUserId);
-      if (canCompareWithPreviousSnapshot) {
-        await notifyImmediateAssignedAlerts(assignedAlertDiff);
+  const loadMergeRequests = useCallback(
+    async (options?: {
+      notifyReviewReminder?: boolean;
+      reminderTime?: string;
+      background?: boolean;
+    }) => {
+      if (loadInFlightRef.current) {
+        return;
       }
-      setAssignedItems(rawAssignedSignals);
-      setReviewRequestedItems(reviewRequestedSignals);
-      await updateTrayIndicator(summarizeTrayIndicator(actionableAssignedSignals, reviewRequestedSignals));
 
-      if (options?.notifyReviewReminder) {
-        const reviewStatusCounts = summarizeReviewStatusCounts(reviewRequestedSignals);
-        const reminderTimeLabel = options.reminderTime ?? new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit' }).format(new Date());
-        if (reviewStatusCounts.total > 0) {
-          await notifyReviewReminder(reviewStatusCounts, reminderTimeLabel);
-        } else {
-          setReviewReminderMessage(`${reminderTimeLabel} 時点ではレビュー対象のMRはありませんでした。`);
-        }
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-    } finally {
-      if (!background) {
+      if (!client) {
+        assignedAlertSnapshotRef.current = new Map();
+        assignedAlertSnapshotInitializedRef.current = false;
+        assignedAlertSnapshotUserIdRef.current = undefined;
+        ignoredAssignedAlertsRef.current = new Map();
+        ignoredAssignedAlertsUserIdRef.current = undefined;
+        setAssignedAlertSnapshotEntries([]);
+        setAssignedAlertSnapshotInitialized(false);
+        setAssignedAlertSnapshotUserId(undefined);
+        setIgnoredAssignedAlertEntries([]);
+        setIgnoredAssignedAlertsUserId(undefined);
+        setAssignedItems([]);
+        setReviewRequestedItems([]);
         setLoading(false);
+        setError(missingPatTokenMessage);
+        await updateTrayIndicator({
+          conflictCount: 0,
+          failedCiCount: 0,
+          reviewPendingCount: 0,
+          actionableTotalCount: 0,
+        });
+        return;
       }
-      loadInFlightRef.current = false;
-    }
-  }, [
-    client,
-    notifyImmediateAssignedAlerts,
-    notifyReviewReminder,
-    updateTrayIndicator
-  ]);
 
-  const ignoreAssignedMergeRequestUntilNewCommit = useCallback((mergeRequestId: number) => {
-    const target = assignedItems.find((item) => item.mergeRequest.id === mergeRequestId);
-    if (!target || (!target.hasConflicts && !target.hasFailedCi)) {
-      return;
-    }
+      loadInFlightRef.current = true;
+      const background = options?.background === true;
+      if (!background) {
+        setLoading(true);
+      }
+      setError(undefined);
+      try {
+        const mergeRequests = await client.listMyRelevantMergeRequests();
+        const [rawAssignedSignals, reviewRequestedSignals] = await Promise.all([
+          client.buildHealthSignals(mergeRequests.assigned, mergeRequests.currentUserId, {
+            includeLatestCommitAt: true,
+          }),
+          client.buildHealthSignals(mergeRequests.reviewRequested, mergeRequests.currentUserId, {
+            includeReviewerChecks: true,
+          }),
+        ]);
+        const sameIgnoredAssignedAlertsUser =
+          ignoredAssignedAlertsUserIdRef.current != null &&
+          ignoredAssignedAlertsUserIdRef.current === mergeRequests.currentUserId;
+        const previousIgnoredAssignedAlerts = sameIgnoredAssignedAlertsUser
+          ? ignoredAssignedAlertsRef.current
+          : new Map<number, IgnoredAssignedAlertState>();
+        const appliedIgnoredAssignedAlerts = applyIgnoredAssignedAlertsUntilNewCommit(
+          rawAssignedSignals,
+          previousIgnoredAssignedAlerts,
+        );
+        const actionableAssignedSignals = suppressIgnoredAssignedSignals(
+          rawAssignedSignals,
+          appliedIgnoredAssignedAlerts.activeIgnoredSignals,
+        );
+        const nextIgnoredAssignedAlerts = appliedIgnoredAssignedAlerts.nextState;
 
-    const nextIgnoredAssignedAlerts = new Map(ignoredAssignedAlertsRef.current);
-    nextIgnoredAssignedAlerts.set(mergeRequestId, {
-      commitSignature: toCommitSignature(target.latestCommitAt),
-      ignoreConflicts: target.hasConflicts,
-      ignoreFailedCi: target.hasFailedCi
-    });
-    ignoredAssignedAlertsRef.current = nextIgnoredAssignedAlerts;
-    setIgnoredAssignedAlertEntries(serializeIgnoredAssignedAlerts(nextIgnoredAssignedAlerts));
+        ignoredAssignedAlertsRef.current = nextIgnoredAssignedAlerts;
+        ignoredAssignedAlertsUserIdRef.current = mergeRequests.currentUserId;
+        setIgnoredAssignedAlertEntries(serializeIgnoredAssignedAlerts(nextIgnoredAssignedAlerts));
+        setIgnoredAssignedAlertsUserId(mergeRequests.currentUserId);
 
-    const currentUserId = assignedAlertSnapshotUserIdRef.current;
-    if (currentUserId != null) {
-      ignoredAssignedAlertsUserIdRef.current = currentUserId;
-      setIgnoredAssignedAlertsUserId(currentUserId);
-    }
+        const canCompareWithPreviousSnapshot =
+          assignedAlertSnapshotInitializedRef.current &&
+          assignedAlertSnapshotUserIdRef.current === mergeRequests.currentUserId;
+        const previousSnapshot = canCompareWithPreviousSnapshot
+          ? assignedAlertSnapshotRef.current
+          : new Map<number, AssignedAlertSnapshot>();
+        const assignedAlertDiff = detectAssignedAlertDiff(
+          previousSnapshot,
+          actionableAssignedSignals,
+        );
+        const nextAssignedAlertSnapshot = buildAssignedAlertSnapshot(actionableAssignedSignals);
+        assignedAlertSnapshotRef.current = nextAssignedAlertSnapshot;
+        assignedAlertSnapshotInitializedRef.current = true;
+        assignedAlertSnapshotUserIdRef.current = mergeRequests.currentUserId;
+        setAssignedAlertSnapshotEntries(
+          serializeAssignedAlertSnapshotEntries(nextAssignedAlertSnapshot),
+        );
+        setAssignedAlertSnapshotInitialized(true);
+        setAssignedAlertSnapshotUserId(mergeRequests.currentUserId);
+        if (canCompareWithPreviousSnapshot) {
+          await notifyImmediateAssignedAlerts(assignedAlertDiff);
+        }
+        setAssignedItems(rawAssignedSignals);
+        setReviewRequestedItems(reviewRequestedSignals);
+        await updateTrayIndicator(
+          summarizeTrayIndicator(actionableAssignedSignals, reviewRequestedSignals),
+        );
 
-    const previewAppliedIgnoredAssignedAlerts = applyIgnoredAssignedAlertsUntilNewCommit(assignedItems, nextIgnoredAssignedAlerts);
-    const actionableAssignedItems = suppressIgnoredAssignedSignals(
-      assignedItems,
-      previewAppliedIgnoredAssignedAlerts.activeIgnoredSignals
-    );
-    void updateTrayIndicator(summarizeTrayIndicator(actionableAssignedItems, reviewRequestedItems));
-  }, [assignedItems, reviewRequestedItems, updateTrayIndicator]);
+        if (options?.notifyReviewReminder) {
+          const reviewStatusCounts = summarizeReviewStatusCounts(reviewRequestedSignals);
+          const reminderTimeLabel =
+            options.reminderTime ??
+            new Intl.DateTimeFormat('ja-JP', { hour: '2-digit', minute: '2-digit' }).format(
+              new Date(),
+            );
+          if (reviewStatusCounts.total > 0) {
+            await notifyReviewReminder(reviewStatusCounts, reminderTimeLabel);
+          } else {
+            setReviewReminderMessage(
+              `${reminderTimeLabel} 時点ではレビュー対象のMRはありませんでした。`,
+            );
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Unknown error');
+      } finally {
+        if (!background) {
+          setLoading(false);
+        }
+        loadInFlightRef.current = false;
+      }
+    },
+    [client, notifyImmediateAssignedAlerts, notifyReviewReminder, updateTrayIndicator],
+  );
+
+  const ignoreAssignedMergeRequestUntilNewCommit = useCallback(
+    (mergeRequestId: number) => {
+      const target = assignedItems.find((item) => item.mergeRequest.id === mergeRequestId);
+      if (!target || (!target.hasConflicts && !target.hasFailedCi)) {
+        return;
+      }
+
+      const nextIgnoredAssignedAlerts = new Map(ignoredAssignedAlertsRef.current);
+      nextIgnoredAssignedAlerts.set(mergeRequestId, {
+        commitSignature: toCommitSignature(target.latestCommitAt),
+        ignoreConflicts: target.hasConflicts,
+        ignoreFailedCi: target.hasFailedCi,
+      });
+      ignoredAssignedAlertsRef.current = nextIgnoredAssignedAlerts;
+      setIgnoredAssignedAlertEntries(serializeIgnoredAssignedAlerts(nextIgnoredAssignedAlerts));
+
+      const currentUserId = assignedAlertSnapshotUserIdRef.current;
+      if (currentUserId != null) {
+        ignoredAssignedAlertsUserIdRef.current = currentUserId;
+        setIgnoredAssignedAlertsUserId(currentUserId);
+      }
+
+      const previewAppliedIgnoredAssignedAlerts = applyIgnoredAssignedAlertsUntilNewCommit(
+        assignedItems,
+        nextIgnoredAssignedAlerts,
+      );
+      const actionableAssignedItems = suppressIgnoredAssignedSignals(
+        assignedItems,
+        previewAppliedIgnoredAssignedAlerts.activeIgnoredSignals,
+      );
+      void updateTrayIndicator(
+        summarizeTrayIndicator(actionableAssignedItems, reviewRequestedItems),
+      );
+    },
+    [assignedItems, reviewRequestedItems, updateTrayIndicator],
+  );
 
   useEffect(() => {
     if (authLoading) {
@@ -1442,7 +1604,7 @@ export function App() {
       assignedAlertSnapshotInitialized,
       assignedAlertSnapshotUserId,
       ignoredAssignedAlerts: ignoredAssignedAlertEntries,
-      ignoredAssignedAlertsUserId
+      ignoredAssignedAlertsUserId,
     };
 
     void saveAppSettings(nextSettings).catch(() => {
@@ -1461,7 +1623,7 @@ export function App() {
     reviewReminderTimes,
     saveAppSettings,
     showInCommandTab,
-    settingsLoaded
+    settingsLoaded,
   ]);
 
   useEffect(() => {
@@ -1544,7 +1706,14 @@ export function App() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [authLoading, client, loadMergeRequests, notifiedReviewReminderSlots, reviewReminderEnabled, reviewReminderTimes]);
+  }, [
+    authLoading,
+    client,
+    loadMergeRequests,
+    notifiedReviewReminderSlots,
+    reviewReminderEnabled,
+    reviewReminderTimes,
+  ]);
 
   const notificationPermissionLabel = getNotificationPermissionLabel(notificationPermission);
   const notificationPermissionButtonLabel =
@@ -1559,10 +1728,17 @@ export function App() {
             <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
               <div>
                 <CardTitle className="text-2xl">GitLab Action Radar</CardTitle>
-                <CardDescription className="mt-1">Assigned to me / Review requested MRs</CardDescription>
+                <CardDescription className="mt-1">
+                  Assigned to me / Review requested MRs
+                </CardDescription>
               </div>
               <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" onClick={() => void loadMergeRequests()} disabled={loading || !client}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void loadMergeRequests()}
+                  disabled={loading || !client}
+                >
                   <RefreshCw className={loading ? 'animate-spin' : ''} />
                   Reload
                 </Button>
@@ -1570,7 +1746,10 @@ export function App() {
             </div>
           </CardHeader>
           <CardContent>
-            <Tabs value={activeMainTab} onValueChange={(value) => setActiveMainTab(value as 'radar' | 'settings')}>
+            <Tabs
+              value={activeMainTab}
+              onValueChange={(value) => setActiveMainTab(value as 'radar' | 'settings')}
+            >
               <TabsList className="grid w-full max-w-xs grid-cols-2">
                 <TabsTrigger value="radar">Radar</TabsTrigger>
                 <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -1593,10 +1772,15 @@ export function App() {
                 <section className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
                   <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                     <div>
-                      <p className="text-sm font-medium text-slate-700">GitLab Personal Access Token (PAT)</p>
-                      <p className="text-xs text-slate-600">GitLab の Personal Access Token (PAT) を安全ストアに保存して利用します。</p>
+                      <p className="text-sm font-medium text-slate-700">
+                        GitLab Personal Access Token (PAT)
+                      </p>
                       <p className="text-xs text-slate-600">
-                        必要最小権限: <span className="font-mono">{gitlabPatMinimumScope}</span>（API の読み取り専用）
+                        GitLab の Personal Access Token (PAT) を安全ストアに保存して利用します。
+                      </p>
+                      <p className="text-xs text-slate-600">
+                        必要最小権限: <span className="font-mono">{gitlabPatMinimumScope}</span>
+                        （API の読み取り専用）
                       </p>
                     </div>
                     <Button type="button" variant="outline" onClick={openPatIssuePage}>
@@ -1612,7 +1796,11 @@ export function App() {
                       aria-label="GitLab Personal Access Token (PAT)"
                       className="sm:flex-1"
                     />
-                    <Button type="button" onClick={() => void savePatToken()} disabled={authLoading}>
+                    <Button
+                      type="button"
+                      onClick={() => void savePatToken()}
+                      disabled={authLoading}
+                    >
                       Save Token (PAT)
                     </Button>
                     <Button
@@ -1625,9 +1813,15 @@ export function App() {
                     </Button>
                   </div>
                   {authMessage && <p className="text-sm text-slate-600">{authMessage}</p>}
-                  {hasSavedPatToken && <p className="text-sm text-slate-600">現在は安全ストアの Personal Access Token (PAT) を使用しています。</p>}
+                  {hasSavedPatToken && (
+                    <p className="text-sm text-slate-600">
+                      現在は安全ストアの Personal Access Token (PAT) を使用しています。
+                    </p>
+                  )}
                   {!hasSavedPatToken && gitlabTokenFromEnv && (
-                    <p className="text-sm text-slate-600">現在は環境変数の Personal Access Token (PAT) を使用しています。</p>
+                    <p className="text-sm text-slate-600">
+                      現在は環境変数の Personal Access Token (PAT) を使用しています。
+                    </p>
                   )}
                 </section>
 
@@ -1652,7 +1846,7 @@ export function App() {
                         value={autoPollingIntervalMinutes}
                         onChange={(event) =>
                           setAutoPollingIntervalMinutes(
-                            normalizePollingIntervalMinutes(Number(event.target.value))
+                            normalizePollingIntervalMinutes(Number(event.target.value)),
                           )
                         }
                         disabled={!autoPollingEnabled}
@@ -1663,8 +1857,9 @@ export function App() {
                     </div>
                   </div>
                   <p className="text-xs text-slate-600">
-                    GitLab負荷を抑えるため {minAutoPollingIntervalMinutes}〜{maxAutoPollingIntervalMinutes} 分で設定します
-                    （既定 {defaultAutoPollingIntervalMinutes} 分）。
+                    GitLab負荷を抑えるため {minAutoPollingIntervalMinutes}〜
+                    {maxAutoPollingIntervalMinutes} 分で設定します （既定{' '}
+                    {defaultAutoPollingIntervalMinutes} 分）。
                   </p>
                 </section>
 
@@ -1740,7 +1935,12 @@ export function App() {
                         className="sm:w-[160px]"
                         aria-label="Review reminder time"
                       />
-                      <Button type="button" variant="outline" onClick={addReviewReminderTime} disabled={!reviewReminderEnabled}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={addReviewReminderTime}
+                        disabled={!reviewReminderEnabled}
+                      >
                         Add time
                       </Button>
                     </div>
@@ -1762,8 +1962,12 @@ export function App() {
                       )}
                     </div>
                   </div>
-                  <p className="text-xs text-slate-600">設定した各時刻に review requested MR があればOS通知します。</p>
-                  {reviewReminderMessage && <p className="text-xs text-slate-600">{reviewReminderMessage}</p>}
+                  <p className="text-xs text-slate-600">
+                    設定した各時刻に review requested MR があればOS通知します。
+                  </p>
+                  {reviewReminderMessage && (
+                    <p className="text-xs text-slate-600">{reviewReminderMessage}</p>
+                  )}
                 </section>
               </TabsContent>
             </Tabs>
