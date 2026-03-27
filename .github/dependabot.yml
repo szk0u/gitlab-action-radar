@@ -1,0 +1,79 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - javascript
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      npm-patch:
+        patterns:
+          - '*'
+        update-types:
+          - patch
+      npm-minor:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:15'
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - rust
+    commit-message:
+      prefix: deps
+      include: scope
+    groups:
+      cargo-patch:
+        patterns:
+          - '*'
+        update-types:
+          - patch
+      cargo-minor:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:30'
+      timezone: Asia/Tokyo
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      github-actions-patch:
+        patterns:
+          - '*'
+        update-types:
+          - patch
+      github-actions-minor:
+        patterns:
+          - '*'
+        update-types:
+          - minor
