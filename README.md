@@ -32,6 +32,16 @@ pnpm tauri build
 `pnpm tauri build` 実行時は `beforeBuildCommand` により `pnpm build` も自動実行されます。  
 成果物は `src-tauri/target/release/bundle` 配下に生成されます。
 
+## GitHub Actions リリース
+
+`.github/workflows/release.yml` で GitHub Actions から配布用ビルドを作成できます。
+
+- `workflow_dispatch` で手動実行
+- `v*` タグ push で GitHub Release を作成
+- macOS (Apple Silicon / Intel), Windows, Linux 向け成果物を生成
+
+タグはアプリのバージョンと揃えてください。`0.2.0` をリリースする場合は `v0.2.0` を push します。
+
 ## テスト (Vitest)
 
 ```bash
