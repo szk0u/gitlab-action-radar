@@ -17,6 +17,8 @@
     "build-storybook": "storybook build",
     "tauri": "tauri",
     "test": "vitest run",
+    "test:visual": "pnpm build-storybook && playwright test",
+    "test:visual:update": "pnpm build-storybook && playwright test --update-snapshots",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -33,6 +35,7 @@
     "tailwind-merge": "^3.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@storybook/addon-a11y": "10.3.3",
     "@storybook/addon-docs": "10.3.3",
     "@storybook/react-vite": "10.3.3",
@@ -42,6 +45,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
+    "http-server": "^14.1.1",
     "jsdom": "^28.1.0",
     "lefthook": "^2.1.4",
     "oxfmt": "^0.42.0",

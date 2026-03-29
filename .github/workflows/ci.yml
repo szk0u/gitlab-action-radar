@@ -37,3 +37,12 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Build Storybook
+        run: pnpm build-storybook
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Storybook visual regression
+        run: pnpm exec playwright test
