@@ -46,7 +46,7 @@
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
     "http-server": "^14.1.1",
-    "jsdom": "^28.1.0",
+    "jsdom": "^29.0.1",
     "lefthook": "^2.1.4",
     "oxfmt": "^0.43.0",
     "oxlint": "^1.58.0",
