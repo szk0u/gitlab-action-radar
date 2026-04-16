@@ -9,7 +9,7 @@ import {
 import { Store } from '@tauri-apps/plugin-store';
 import { RefreshCw } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { GitLabClient } from './api/gitlabClient';
+import { GitLabApiError, GitLabClient } from './api/gitlabClient';
 import { MergeRequestList, type TabKey } from './components/MergeRequestList';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './components/ui/card';
@@ -74,6 +74,61 @@ function toMessage(error: unknown): string {
     return error.message;
   }
   return String(error);
+}
+
+function formatRetryAfterSeconds(value: number): string {
+  if (value < 60) {
+    return `${value}秒`;
+  }
+
+  const minutes = Math.ceil(value / 60);
+  return `${minutes}分`;
+}
+
+function formatMergeRequestLoadError(
+  error: unknown,
+  options?: { showingCachedData?: boolean },
+): string {
+  let message: string;
+
+  if (error instanceof GitLabApiError) {
+    if (error.kind === 'auth') {
+      message = 'GitLab 認証に失敗しました。PAT が有効か確認してください。';
+    } else if (error.kind === 'permission') {
+      message = 'GitLab API の権限が不足しています。PAT に read_api 権限があるか確認してください。';
+    } else if (error.kind === 'rate_limit') {
+      const retryAfterLabel =
+        error.retryAfterSeconds != null
+          ? `${formatRetryAfterSeconds(error.retryAfterSeconds)}後に再試行してください。`
+          : 'しばらく待ってから再試行してください。';
+      message = `GitLab API のレート制限に達しました。${retryAfterLabel}`;
+    } else if (error.kind === 'server') {
+      message = 'GitLab 側で一時的なエラーが発生しました。しばらくしてから再試行してください。';
+    } else if (error.kind === 'network') {
+      message = 'GitLab に接続できませんでした。ネットワーク状態を確認してください。';
+    } else if (error.kind === 'timeout') {
+      message = 'GitLab API の応答がタイムアウトしました。ネットワーク状態を確認してください。';
+    } else {
+      message = `GitLab API の取得に失敗しました: ${error.message}`;
+    }
+  } else {
+    message = `GitLab API の取得に失敗しました: ${toMessage(error)}`;
+  }
+
+  if (options?.showingCachedData) {
+    return `前回の取得結果を表示しています。${message}`;
+  }
+
+  return message;
+}
+
+function formatRefreshTimestamp(value: number): string {
+  return new Intl.DateTimeFormat('ja-JP', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value));
 }
 
 function isTauriRuntime(): boolean {
@@ -782,6 +837,7 @@ export function App() {
   const [reviewRequestedItems, setReviewRequestedItems] = useState<MergeRequestHealth[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [lastSuccessfulRefreshAt, setLastSuccessfulRefreshAt] = useState<number | undefined>();
   const [reviewReminderEnabled, setReviewReminderEnabled] = useState(false);
   const [reviewReminderTimes, setReviewReminderTimes] = useState<string[]>(['09:00']);
   const [reviewReminderTimeInput, setReviewReminderTimeInput] = useState('09:00');
@@ -813,6 +869,7 @@ export function App() {
   >();
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const loadInFlightRef = useRef(false);
+  const hasLoadedMergeRequestsSuccessfullyRef = useRef(false);
   const assignedAlertSnapshotRef = useRef<Map<number, AssignedAlertSnapshot>>(new Map());
   const assignedAlertSnapshotInitializedRef = useRef(false);
   const assignedAlertSnapshotUserIdRef = useRef<number | undefined>(undefined);
@@ -1411,6 +1468,7 @@ export function App() {
       }
 
       if (!client) {
+        hasLoadedMergeRequestsSuccessfullyRef.current = false;
         assignedAlertSnapshotRef.current = new Map();
         assignedAlertSnapshotInitializedRef.current = false;
         assignedAlertSnapshotUserIdRef.current = undefined;
@@ -1424,6 +1482,7 @@ export function App() {
         setAssignedItems([]);
         setReviewRequestedItems([]);
         setLoading(false);
+        setLastSuccessfulRefreshAt(undefined);
         setError(missingPatTokenMessage);
         await updateTrayIndicator({
           conflictCount: 0,
@@ -1438,8 +1497,8 @@ export function App() {
       const background = options?.background === true;
       if (!background) {
         setLoading(true);
+        setError(undefined);
       }
-      setError(undefined);
       try {
         const mergeRequests = await client.listMyRelevantMergeRequests();
         const [rawAssignedSignals, reviewRequestedSignals] = await Promise.all([
@@ -1498,6 +1557,9 @@ export function App() {
         await updateTrayIndicator(
           summarizeTrayIndicator(actionableAssignedSignals, reviewRequestedSignals),
         );
+        hasLoadedMergeRequestsSuccessfullyRef.current = true;
+        setLastSuccessfulRefreshAt(Date.now());
+        setError(undefined);
 
         if (options?.notifyReviewReminder) {
           const reviewStatusCounts = summarizeReviewStatusCounts(reviewRequestedSignals);
@@ -1515,7 +1577,11 @@ export function App() {
           }
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        setError(
+          formatMergeRequestLoadError(err, {
+            showingCachedData: hasLoadedMergeRequestsSuccessfullyRef.current,
+          }),
+        );
       } finally {
         if (!background) {
           setLoading(false);
@@ -1719,6 +1785,10 @@ export function App() {
   const notificationPermissionButtonLabel =
     notificationPermission === 'default' ? '通知許可をリクエスト' : '通知設定を開く';
   const notificationPermissionButtonDisabled = notificationPermission === 'unsupported';
+  const refreshStatusLabel =
+    lastSuccessfulRefreshAt == null
+      ? undefined
+      : `最終更新 ${formatRefreshTimestamp(lastSuccessfulRefreshAt)}`;
 
   return (
     <main className="min-h-screen bg-radial-[at_50%_0%] from-slate-200 to-slate-100 px-4 py-6 text-slate-900">
@@ -1733,6 +1803,9 @@ export function App() {
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
+                {refreshStatusLabel && (
+                  <p className="text-xs text-slate-500">{refreshStatusLabel}</p>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -1762,6 +1835,7 @@ export function App() {
                   ignoredAssignedAlerts={ignoredAssignedAlerts}
                   loading={loading}
                   error={error}
+                  hasLoadedOnceSuccessfully={lastSuccessfulRefreshAt != null}
                   onOpenMergeRequest={openExternalUrl}
                   onIgnoreAssignedUntilNewCommit={ignoreAssignedMergeRequestUntilNewCommit}
                   tabNavigationRequest={tabNavigationRequest}

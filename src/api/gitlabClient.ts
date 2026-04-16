@@ -4,6 +4,8 @@ import {
   MergeRequestCommit,
   MergeRequest,
   MergeRequestApprovals,
+  MergeRequestDiff,
+  MergeRequestDiffStats,
   MergeRequestDetails,
   MergeRequestHealth,
   MergeRequestNote,
@@ -12,6 +14,10 @@ import {
   ReviewerMergeRequestChecks,
   ReviewerReviewStatus,
 } from '../types/gitlab';
+
+const requestTimeoutMs = 15_000;
+const maxRequestRetries = 2;
+const baseRetryDelayMs = 750;
 
 export interface GitLabClientConfig {
   baseUrl: string;
@@ -23,6 +29,37 @@ export interface BuildHealthSignalsOptions {
   includeLatestCommitAt?: boolean;
 }
 
+export type GitLabApiErrorKind =
+  | 'auth'
+  | 'permission'
+  | 'rate_limit'
+  | 'server'
+  | 'network'
+  | 'timeout'
+  | 'unknown';
+
+interface GitLabApiErrorOptions {
+  status?: number;
+  retryable?: boolean;
+  retryAfterSeconds?: number;
+}
+
+export class GitLabApiError extends Error {
+  readonly kind: GitLabApiErrorKind;
+  readonly status?: number;
+  readonly retryable: boolean;
+  readonly retryAfterSeconds?: number;
+
+  constructor(kind: GitLabApiErrorKind, message: string, options?: GitLabApiErrorOptions) {
+    super(message);
+    this.name = 'GitLabApiError';
+    this.kind = kind;
+    this.status = options?.status;
+    this.retryable = options?.retryable ?? false;
+    this.retryAfterSeconds = options?.retryAfterSeconds;
+  }
+}
+
 export class GitLabClient {
   private readonly baseUrl: string;
   private readonly token: string;
@@ -30,25 +67,132 @@ export class GitLabClient {
   private readonly detailsCache = new Map<string, Promise<MergeRequestDetails | undefined>>();
   private readonly notesCache = new Map<string, Promise<MergeRequestNote[] | undefined>>();
   private readonly commitsCache = new Map<string, Promise<MergeRequestCommit[] | undefined>>();
+  private readonly diffsCache = new Map<string, Promise<MergeRequestDiff[] | undefined>>();
 
   constructor(config: GitLabClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, '');
     this.token = config.token;
   }
 
-  private async request<T>(pathWithQuery: string): Promise<T> {
-    const response = await fetch(`${this.baseUrl}${pathWithQuery}`, {
-      headers: {
-        'PRIVATE-TOKEN': this.token,
-        'Content-Type': 'application/json',
-      },
-    });
+  private isAbortError(error: unknown): boolean {
+    return error instanceof Error && error.name === 'AbortError';
+  }
 
-    if (!response.ok) {
-      throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+  private parseRetryAfterSeconds(value: string | null | undefined): number | undefined {
+    if (!value) {
+      return undefined;
     }
 
-    return (await response.json()) as T;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return undefined;
+    }
+
+    return parsed;
+  }
+
+  private buildResponseError(response: Response): GitLabApiError {
+    const retryAfterSeconds = this.parseRetryAfterSeconds(response.headers?.get?.('retry-after'));
+    const message = `GitLab API error: ${response.status} ${response.statusText}`;
+
+    if (response.status === 401) {
+      return new GitLabApiError('auth', message, { status: 401 });
+    }
+    if (response.status === 403) {
+      return new GitLabApiError('permission', message, { status: 403 });
+    }
+    if (response.status === 429) {
+      return new GitLabApiError('rate_limit', message, {
+        status: 429,
+        retryable: true,
+        retryAfterSeconds,
+      });
+    }
+    if (response.status >= 500) {
+      return new GitLabApiError('server', message, {
+        status: response.status,
+        retryable: true,
+        retryAfterSeconds,
+      });
+    }
+
+    return new GitLabApiError('unknown', message, { status: response.status });
+  }
+
+  private normalizeRequestError(error: unknown): GitLabApiError {
+    if (error instanceof GitLabApiError) {
+      return error;
+    }
+    if (this.isAbortError(error)) {
+      return new GitLabApiError('timeout', 'GitLab API request timed out', {
+        retryable: true,
+      });
+    }
+    if (error instanceof TypeError) {
+      return new GitLabApiError('network', 'GitLab API request failed due to a network error', {
+        retryable: true,
+      });
+    }
+    if (error instanceof Error) {
+      return new GitLabApiError('unknown', error.message);
+    }
+
+    return new GitLabApiError('unknown', String(error));
+  }
+
+  private getRetryDelayMs(error: GitLabApiError, attempt: number): number {
+    if (error.retryAfterSeconds != null) {
+      return error.retryAfterSeconds * 1_000;
+    }
+
+    return baseRetryDelayMs * 2 ** attempt;
+  }
+
+  private async delay(ms: number): Promise<void> {
+    await new Promise((resolve) => {
+      globalThis.setTimeout(resolve, ms);
+    });
+  }
+
+  private async fetchWithTimeout(pathWithQuery: string): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = globalThis.setTimeout(() => {
+      controller.abort();
+    }, requestTimeoutMs);
+
+    try {
+      return await fetch(`${this.baseUrl}${pathWithQuery}`, {
+        headers: {
+          'PRIVATE-TOKEN': this.token,
+          'Content-Type': 'application/json',
+        },
+        signal: controller.signal,
+      });
+    } finally {
+      globalThis.clearTimeout(timeoutId);
+    }
+  }
+
+  private async request<T>(pathWithQuery: string): Promise<T> {
+    for (let attempt = 0; attempt <= maxRequestRetries; attempt += 1) {
+      try {
+        const response = await this.fetchWithTimeout(pathWithQuery);
+        if (!response.ok) {
+          throw this.buildResponseError(response);
+        }
+
+        return (await response.json()) as T;
+      } catch (error) {
+        const normalizedError = this.normalizeRequestError(error);
+        if (!normalizedError.retryable || attempt === maxRequestRetries) {
+          throw normalizedError;
+        }
+
+        await this.delay(this.getRetryDelayMs(normalizedError, attempt));
+      }
+    }
+
+    throw new GitLabApiError('unknown', 'GitLab API request failed unexpectedly');
   }
 
   async getCurrentUser(): Promise<GitLabUser> {
@@ -161,6 +305,111 @@ export class GitLabClient {
 
     this.commitsCache.set(key, promise);
     return promise;
+  }
+
+  private getMergeRequestDiffs(
+    mergeRequest: MergeRequest,
+  ): Promise<MergeRequestDiff[] | undefined> {
+    const key = this.getMergeRequestKey(mergeRequest);
+    const cached = this.diffsCache.get(key);
+    if (cached) {
+      return cached;
+    }
+
+    const promise = this.request<MergeRequestDiff[]>(
+      `/api/v4/projects/${encodeURIComponent(String(mergeRequest.project_id))}/merge_requests/${encodeURIComponent(
+        String(mergeRequest.iid),
+      )}/diffs?per_page=100&unidiff=true`,
+    ).catch(() => undefined);
+
+    this.diffsCache.set(key, promise);
+    return promise;
+  }
+
+  private countDiffLineChanges(diff: string | undefined): { additions: number; deletions: number } {
+    if (!diff) {
+      return { additions: 0, deletions: 0 };
+    }
+
+    let additions = 0;
+    let deletions = 0;
+
+    for (const line of diff.split('\n')) {
+      if (
+        line.startsWith('+++') ||
+        line.startsWith('---') ||
+        line.startsWith('diff ') ||
+        line.startsWith('index ') ||
+        line.startsWith('@@')
+      ) {
+        continue;
+      }
+
+      if (line.startsWith('+')) {
+        additions += 1;
+        continue;
+      }
+
+      if (line.startsWith('-')) {
+        deletions += 1;
+      }
+    }
+
+    return { additions, deletions };
+  }
+
+  private parseChangedFilesCount(value: string | undefined, fallback: number): number {
+    if (!value) {
+      return fallback;
+    }
+
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  private async buildDiffStats(
+    mergeRequest: MergeRequest,
+  ): Promise<MergeRequestDiffStats | undefined> {
+    const diffs = await this.getMergeRequestDiffs(mergeRequest);
+    if (!diffs) {
+      const changedFiles = this.parseChangedFilesCount(mergeRequest.changes_count, 0);
+      return changedFiles > 0 ? { changedFiles } : undefined;
+    }
+
+    let additions = 0;
+    let deletions = 0;
+
+    for (const diff of diffs) {
+      const counts = this.countDiffLineChanges(diff.diff);
+      additions += counts.additions;
+      deletions += counts.deletions;
+    }
+
+    return {
+      changedFiles: this.parseChangedFilesCount(mergeRequest.changes_count, diffs.length),
+      additions,
+      deletions,
+    };
+  }
+
+  private enrichMergeRequest(
+    mergeRequest: MergeRequest,
+    details: MergeRequestDetails | undefined,
+    diffStats: MergeRequestDiffStats | undefined,
+  ): MergeRequest {
+    if (!details && !diffStats) {
+      return mergeRequest;
+    }
+
+    return {
+      ...mergeRequest,
+      reviewers: details?.reviewers ?? mergeRequest.reviewers,
+      labels: details?.labels ?? mergeRequest.labels,
+      milestone: details?.milestone ?? mergeRequest.milestone,
+      user_notes_count: details?.user_notes_count ?? mergeRequest.user_notes_count,
+      changes_count: details?.changes_count ?? mergeRequest.changes_count,
+      diffStats: diffStats ?? mergeRequest.diffStats,
+    };
   }
 
   private async isReviewedByUser(mergeRequest: MergeRequest, userId: number): Promise<boolean> {
@@ -440,7 +689,7 @@ export class GitLabClient {
         const isCreatedByMe = mergeRequest.author?.id === currentUserId;
         const shouldIncludeLatestCommitAt =
           options?.includeLatestCommitAt || options?.includeReviewerChecks;
-        const [details, ownMrChecks, latestCommitAt] = await Promise.all([
+        const [details, ownMrChecks, latestCommitAt, diffStats] = await Promise.all([
           this.getMergeRequestDetails(mergeRequest),
           isCreatedByMe
             ? this.buildOwnMergeRequestChecks(mergeRequest)
@@ -448,6 +697,7 @@ export class GitLabClient {
           shouldIncludeLatestCommitAt
             ? this.getLatestCommitAt(mergeRequest)
             : Promise.resolve(undefined),
+          this.buildDiffStats(mergeRequest),
         ]);
         const reviewerChecks = options?.includeReviewerChecks
           ? await this.buildReviewerMergeRequestChecks(mergeRequest, currentUserId, latestCommitAt)
@@ -458,7 +708,7 @@ export class GitLabClient {
         const hasFailedCi = ciStatus === 'failed';
 
         return {
-          mergeRequest,
+          mergeRequest: this.enrichMergeRequest(mergeRequest, details, diffStats),
           ciStatus,
           hasFailedCi,
           hasConflicts: this.hasMergeConflict(mergeRequest, details),

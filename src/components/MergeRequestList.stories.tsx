@@ -27,7 +27,19 @@ function buildMergeRequestHealth(
       pipeline: {
         status: 'success',
       },
-      reviewers: [{ id: 1 }],
+      reviewers: [{ id: 1, name: 'Kohei', username: 'kohei' }],
+      labels: ['backend'],
+      milestone: {
+        id: 1,
+        title: 'Sprint 24',
+      },
+      user_notes_count: 3,
+      changes_count: '4',
+      diffStats: {
+        changedFiles: 4,
+        additions: 32,
+        deletions: 11,
+      },
     },
     ciStatus: 'success',
     hasFailedCi: false,
@@ -49,6 +61,7 @@ const assignedItems: MergeRequestHealth[] = [
       ...assignedBase.mergeRequest,
       title: 'Fix flaky webhook retries',
       updated_at: '2026-03-27T10:12:00.000Z',
+      labels: ['incident', 'urgent'],
     },
   },
   {
@@ -59,6 +72,12 @@ const assignedItems: MergeRequestHealth[] = [
       ...buildMergeRequestHealth(43).mergeRequest,
       title: 'Refactor alert persistence',
       updated_at: '2026-03-27T06:45:00.000Z',
+      user_notes_count: 7,
+      diffStats: {
+        changedFiles: 9,
+        additions: 120,
+        deletions: 48,
+      },
     },
   },
   {
@@ -73,6 +92,7 @@ const assignedItems: MergeRequestHealth[] = [
       ...buildMergeRequestHealth(44).mergeRequest,
       title: 'Polish notification copy',
       updated_at: '2026-03-26T23:10:00.000Z',
+      milestone: null,
     },
   },
 ];
@@ -90,6 +110,10 @@ const reviewRequestedItems: MergeRequestHealth[] = [
       ...buildMergeRequestHealth(51).mergeRequest,
       title: 'Add command palette shortcuts',
       updated_at: '2026-03-27T09:55:00.000Z',
+      reviewers: [
+        { id: 1, name: 'Kohei', username: 'kohei' },
+        { id: 3, name: 'Miki', username: 'miki' },
+      ],
     },
   },
   {

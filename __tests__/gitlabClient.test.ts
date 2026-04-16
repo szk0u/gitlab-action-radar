@@ -1,9 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GitLabClient } from '../src/api/gitlabClient';
+import { GitLabApiError, GitLabClient } from '../src/api/gitlabClient';
 import { MergeRequest } from '../src/types/gitlab';
+
+function createJsonResponse(data: unknown): Response {
+  return {
+    ok: true,
+    json: async () => data,
+  } as Response;
+}
+
+function isMrDiffsUrl(url: string): boolean {
+  return url.endsWith('/diffs?per_page=100&unidiff=true');
+}
 
 describe('GitLabClient', () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -139,16 +151,48 @@ describe('GitLabClient', () => {
     expect(result.reviewRequested.map((mr) => mr.id)).toEqual([4]);
   });
 
-  it('request should throw on non-2xx response', async () => {
+  it('request should classify auth failures', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: false,
       status: 401,
       statusText: 'Unauthorized',
-    } as Response);
+      headers: { get: () => null },
+    } as unknown as Response);
 
     const client = new GitLabClient({ baseUrl: 'https://gitlab.com', token: 'bad-token' });
 
-    await expect(client.getCurrentUser()).rejects.toThrow('GitLab API error: 401 Unauthorized');
+    await expect(client.getCurrentUser()).rejects.toMatchObject({
+      name: 'GitLabApiError',
+      kind: 'auth',
+      status: 401,
+      retryable: false,
+      message: 'GitLab API error: 401 Unauthorized',
+    } satisfies Partial<GitLabApiError>);
+  });
+
+  it('request should retry transient server failures', async () => {
+    vi.useFakeTimers();
+
+    const mockFetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        statusText: 'Bad Gateway',
+        headers: { get: () => null },
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 99, username: 'me', name: 'Me' }),
+      } as Response);
+
+    const client = new GitLabClient({ baseUrl: 'https://gitlab.com', token: 'token' });
+    const promise = client.getCurrentUser();
+
+    await vi.runAllTimersAsync();
+
+    await expect(promise).resolves.toEqual({ id: 99, username: 'me', name: 'Me' });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
   });
 
   it('buildHealthSignals should derive CI/conflict/approval signals and own-MR checks', async () => {
@@ -156,37 +200,59 @@ describe('GitLabClient', () => {
       const url = String(input);
 
       if (url === 'https://gitlab.com/api/v4/projects/100/merge_requests/1/approvals') {
-        return {
-          ok: true,
-          json: async () => ({
-            approved_by: [{ user: { id: 7, name: 'Reviewer' } }],
-            approved: true,
-            approvals_left: 0,
-          }),
-        } as Response;
+        return createJsonResponse({
+          approved_by: [{ user: { id: 7, name: 'Reviewer' } }],
+          approved: true,
+          approvals_left: 0,
+        });
       }
 
       if (url === 'https://gitlab.com/api/v4/projects/100/merge_requests/1') {
-        return {
-          ok: true,
-          json: async () => ({
-            blocking_discussions_resolved: false,
-            unresolved_discussions_count: 2,
-            head_pipeline: { status: 'success' },
-          }),
-        } as Response;
+        return createJsonResponse({
+          blocking_discussions_resolved: false,
+          unresolved_discussions_count: 2,
+          head_pipeline: { status: 'success' },
+          labels: ['backend', 'ready'],
+          milestone: { id: 1, title: 'Sprint 24' },
+          user_notes_count: 5,
+          changes_count: '2',
+          reviewers: [{ id: 7, name: 'Reviewer', username: 'reviewer' }],
+        });
+      }
+
+      if (
+        url ===
+        'https://gitlab.com/api/v4/projects/100/merge_requests/1/diffs?per_page=100&unidiff=true'
+      ) {
+        return createJsonResponse([
+          {
+            diff: '@@ -1 +1,2 @@\n-old line\n+new line\n+second line',
+          },
+          {
+            diff: '@@ -4,2 +4 @@\n-removed a\n-context\n+kept',
+          },
+        ]);
       }
 
       if (url === 'https://gitlab.com/api/v4/projects/200/merge_requests/2') {
-        return {
-          ok: true,
-          json: async () => ({
-            has_conflicts: true,
-            merge_status: 'cannot_be_merged',
-            detailed_merge_status: 'ci_must_pass',
-            head_pipeline: { status: 'failed' },
-          }),
-        } as Response;
+        return createJsonResponse({
+          has_conflicts: true,
+          merge_status: 'cannot_be_merged',
+          detailed_merge_status: 'ci_must_pass',
+          head_pipeline: { status: 'failed' },
+          changes_count: '1',
+        });
+      }
+
+      if (
+        url ===
+        'https://gitlab.com/api/v4/projects/200/merge_requests/2/diffs?per_page=100&unidiff=true'
+      ) {
+        return createJsonResponse([
+          {
+            diff: '@@ -10 +10 @@\n-old\n+new',
+          },
+        ]);
       }
 
       throw new Error(`Unexpected fetch URL: ${url}`);
@@ -235,6 +301,18 @@ describe('GitLabClient', () => {
         hasUnresolvedComments: true,
         ciStatus: 'success',
       },
+      mergeRequest: {
+        reviewers: [{ id: 7, name: 'Reviewer', username: 'reviewer' }],
+        labels: ['backend', 'ready'],
+        milestone: { id: 1, title: 'Sprint 24' },
+        user_notes_count: 5,
+        changes_count: '2',
+        diffStats: {
+          changedFiles: 2,
+          additions: 3,
+          deletions: 3,
+        },
+      },
     });
     expect(signals[1]).toMatchObject({
       ciStatus: 'failed',
@@ -254,7 +332,15 @@ describe('GitLabClient', () => {
       expect.any(Object),
     );
     expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/100/merge_requests/1/diffs?per_page=100&unidiff=true',
+      expect.any(Object),
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/200/merge_requests/2',
+      expect.any(Object),
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/200/merge_requests/2/diffs?per_page=100&unidiff=true',
       expect.any(Object),
     );
   });
@@ -264,15 +350,16 @@ describe('GitLabClient', () => {
       const url = String(input);
 
       if (url === 'https://gitlab.com/api/v4/projects/300/merge_requests/3') {
-        return {
-          ok: true,
-          json: async () => ({
-            has_conflicts: false,
-            merge_status: 'can_be_merged',
-            detailed_merge_status: 'can_be_merged',
-            head_pipeline: { status: 'failed' },
-          }),
-        } as Response;
+        return createJsonResponse({
+          has_conflicts: false,
+          merge_status: 'can_be_merged',
+          detailed_merge_status: 'can_be_merged',
+          head_pipeline: { status: 'failed' },
+        });
+      }
+
+      if (isMrDiffsUrl(url)) {
+        return createJsonResponse([]);
       }
 
       throw new Error(`Unexpected fetch URL: ${url}`);
@@ -308,15 +395,16 @@ describe('GitLabClient', () => {
       const url = String(input);
 
       if (url === 'https://gitlab.com/api/v4/projects/301/merge_requests/31') {
-        return {
-          ok: true,
-          json: async () => ({
-            has_conflicts: false,
-            merge_status: 'can_be_merged',
-            detailed_merge_status: 'not_approved',
-            head_pipeline: { status: 'failed' },
-          }),
-        } as Response;
+        return createJsonResponse({
+          has_conflicts: false,
+          merge_status: 'can_be_merged',
+          detailed_merge_status: 'not_approved',
+          head_pipeline: { status: 'failed' },
+        });
+      }
+
+      if (isMrDiffsUrl(url)) {
+        return createJsonResponse([]);
       }
 
       throw new Error(`Unexpected fetch URL: ${url}`);
@@ -352,52 +440,50 @@ describe('GitLabClient', () => {
       const url = String(input);
 
       if (url === 'https://gitlab.com/api/v4/projects/500/merge_requests/50') {
-        return {
-          ok: true,
-          json: async () => ({
-            has_conflicts: false,
-            merge_status: 'can_be_merged',
-            head_pipeline: { status: 'success' },
-          }),
-        } as Response;
+        return createJsonResponse({
+          has_conflicts: false,
+          merge_status: 'can_be_merged',
+          head_pipeline: { status: 'success' },
+        });
+      }
+
+      if (
+        url ===
+        'https://gitlab.com/api/v4/projects/500/merge_requests/50/diffs?per_page=100&unidiff=true'
+      ) {
+        return createJsonResponse([]);
       }
 
       if (
         url ===
         'https://gitlab.com/api/v4/projects/500/merge_requests/50/notes?per_page=100&order_by=created_at&sort=desc'
       ) {
-        return {
-          ok: true,
-          json: async () => [
-            {
-              id: 11,
-              created_at: '2026-02-18T10:00:00Z',
-              system: false,
-              author: { id: 123, username: 'author', name: 'Author' },
-            },
-            {
-              id: 10,
-              created_at: '2026-02-18T09:00:00Z',
-              system: false,
-              author: { id: 99, username: 'me', name: 'Me' },
-            },
-            {
-              created_at: '2026-02-18T08:00:00Z',
-              system: false,
-              author: { id: 7, username: 'someone', name: 'Someone' },
-            },
-          ],
-        } as Response;
+        return createJsonResponse([
+          {
+            id: 11,
+            created_at: '2026-02-18T10:00:00Z',
+            system: false,
+            author: { id: 123, username: 'author', name: 'Author' },
+          },
+          {
+            id: 10,
+            created_at: '2026-02-18T09:00:00Z',
+            system: false,
+            author: { id: 99, username: 'me', name: 'Me' },
+          },
+          {
+            created_at: '2026-02-18T08:00:00Z',
+            system: false,
+            author: { id: 7, username: 'someone', name: 'Someone' },
+          },
+        ]);
       }
 
       if (url === 'https://gitlab.com/api/v4/projects/500/merge_requests/50/commits?per_page=100') {
-        return {
-          ok: true,
-          json: async () => [
-            { id: 'b', created_at: '2026-02-18T08:30:00Z' },
-            { id: 'a', created_at: '2026-02-18T08:00:00Z' },
-          ],
-        } as Response;
+        return createJsonResponse([
+          { id: 'b', created_at: '2026-02-18T08:30:00Z' },
+          { id: 'a', created_at: '2026-02-18T08:00:00Z' },
+        ]);
       }
 
       throw new Error(`Unexpected fetch URL: ${url}`);
@@ -441,6 +527,10 @@ describe('GitLabClient', () => {
       expect.any(Object),
     );
     expect(mockFetch).toHaveBeenCalledWith(
+      'https://gitlab.com/api/v4/projects/500/merge_requests/50/diffs?per_page=100&unidiff=true',
+      expect.any(Object),
+    );
+    expect(mockFetch).toHaveBeenCalledWith(
       'https://gitlab.com/api/v4/projects/500/merge_requests/50/commits?per_page=100',
       expect.any(Object),
     );
@@ -451,77 +541,73 @@ describe('GitLabClient', () => {
       const url = String(input);
 
       if (url === 'https://gitlab.com/api/v4/projects/600/merge_requests/60') {
-        return {
-          ok: true,
-          json: async () => ({
-            has_conflicts: false,
-            merge_status: 'can_be_merged',
-          }),
-        } as Response;
+        return createJsonResponse({
+          has_conflicts: false,
+          merge_status: 'can_be_merged',
+        });
+      }
+
+      if (
+        url ===
+        'https://gitlab.com/api/v4/projects/600/merge_requests/60/diffs?per_page=100&unidiff=true'
+      ) {
+        return createJsonResponse([]);
       }
 
       if (
         url ===
         'https://gitlab.com/api/v4/projects/600/merge_requests/60/notes?per_page=100&order_by=created_at&sort=desc'
       ) {
-        return {
-          ok: true,
-          json: async () => [
-            {
-              id: 20,
-              created_at: '2026-02-18T09:00:00Z',
-              system: false,
-              author: { id: 99, username: 'me', name: 'Me' },
-            },
-            {
-              id: 19,
-              created_at: '2026-02-18T08:30:00Z',
-              system: false,
-              author: { id: 777, username: 'author1', name: 'Author1' },
-            },
-          ],
-        } as Response;
+        return createJsonResponse([
+          {
+            id: 20,
+            created_at: '2026-02-18T09:00:00Z',
+            system: false,
+            author: { id: 99, username: 'me', name: 'Me' },
+          },
+          {
+            id: 19,
+            created_at: '2026-02-18T08:30:00Z',
+            system: false,
+            author: { id: 777, username: 'author1', name: 'Author1' },
+          },
+        ]);
       }
 
       if (url === 'https://gitlab.com/api/v4/projects/600/merge_requests/60/commits?per_page=100') {
-        return {
-          ok: true,
-          json: async () => [{ id: 'c1', created_at: '2026-02-18T08:00:00Z' }],
-        } as Response;
+        return createJsonResponse([{ id: 'c1', created_at: '2026-02-18T08:00:00Z' }]);
       }
 
       if (url === 'https://gitlab.com/api/v4/projects/610/merge_requests/61') {
-        return {
-          ok: true,
-          json: async () => ({
-            has_conflicts: false,
-            merge_status: 'can_be_merged',
-          }),
-        } as Response;
+        return createJsonResponse({
+          has_conflicts: false,
+          merge_status: 'can_be_merged',
+        });
+      }
+
+      if (
+        url ===
+        'https://gitlab.com/api/v4/projects/610/merge_requests/61/diffs?per_page=100&unidiff=true'
+      ) {
+        return createJsonResponse([]);
       }
 
       if (
         url ===
         'https://gitlab.com/api/v4/projects/610/merge_requests/61/notes?per_page=100&order_by=created_at&sort=desc'
       ) {
-        return {
-          ok: true,
-          json: async () => [
-            {
-              id: 30,
-              created_at: '2026-02-18T11:00:00Z',
-              system: false,
-              author: { id: 888, username: 'author2', name: 'Author2' },
-            },
-          ],
-        } as Response;
+        return createJsonResponse([
+          {
+            id: 30,
+            created_at: '2026-02-18T11:00:00Z',
+            system: false,
+            author: { id: 888, username: 'author2', name: 'Author2' },
+          },
+        ]);
       }
 
       if (url === 'https://gitlab.com/api/v4/projects/610/merge_requests/61/commits?per_page=100') {
-        return {
-          ok: true,
-          json: async () => [{ id: 'c2', created_at: '2026-02-18T10:00:00Z' }],
-        } as Response;
+        return createJsonResponse([{ id: 'c2', created_at: '2026-02-18T10:00:00Z' }]);
       }
 
       throw new Error(`Unexpected fetch URL: ${url}`);
