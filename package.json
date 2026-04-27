@@ -39,7 +39,7 @@
     "@storybook/addon-a11y": "10.3.5",
     "@storybook/addon-docs": "10.3.5",
     "@storybook/react-vite": "10.3.5",
-    "@tailwindcss/vite": "^4.2.2",
+    "@tailwindcss/vite": "^4.2.4",
     "@tauri-apps/cli": "latest",
     "@types/node": "latest",
     "@types/react": "latest",
@@ -51,7 +51,7 @@
     "oxfmt": "^0.45.0",
     "oxlint": "^1.60.0",
     "storybook": "10.3.5",
-    "tailwindcss": "^4.2.2",
+    "tailwindcss": "^4.2.4",
     "typescript": "latest",
     "vite": "latest",
     "vitest": "latest"
