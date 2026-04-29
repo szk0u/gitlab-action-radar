@@ -24,13 +24,43 @@ export interface MergeRequest {
     status: string;
   };
   reviewers?: MergeRequestReviewer[];
+  labels?: Array<string | GitLabLabel>;
+  milestone?: GitLabMilestone | null;
+  user_notes_count?: number;
+  changes_count?: string;
+  diffStats?: MergeRequestDiffStats;
   approvals_required?: number;
   approved_by?: Array<{ user: { id: number; name: string } }>;
 }
 
 export interface MergeRequestReviewer {
   id: number;
+  username?: string;
+  name?: string;
   state?: string;
+}
+
+export interface GitLabLabel {
+  id?: number;
+  name: string;
+  color?: string;
+  text_color?: string;
+}
+
+export interface GitLabMilestone {
+  id: number;
+  iid?: number;
+  project_id?: number;
+  title: string;
+  description?: string;
+  state?: string;
+  due_date?: string | null;
+}
+
+export interface MergeRequestDiffStats {
+  changedFiles: number;
+  additions?: number;
+  deletions?: number;
 }
 
 export interface GitLabUser {
@@ -69,6 +99,11 @@ export interface MergeRequestDetails {
   has_conflicts?: boolean;
   merge_status?: string;
   detailed_merge_status?: string;
+  reviewers?: MergeRequestReviewer[];
+  labels?: Array<string | GitLabLabel>;
+  milestone?: GitLabMilestone | null;
+  user_notes_count?: number;
+  changes_count?: string;
   head_pipeline?: {
     status?: string;
   };
@@ -97,6 +132,10 @@ export interface MergeRequestNote {
 export interface MergeRequestCommit {
   id: string;
   created_at?: string;
+}
+
+export interface MergeRequestDiff {
+  diff?: string;
 }
 
 export type ReviewerReviewStatus = 'needs_review' | 'waiting_for_author' | 'new';

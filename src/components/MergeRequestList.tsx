@@ -12,6 +12,7 @@ interface MergeRequestListProps {
   ignoredAssignedAlerts?: IgnoredAssignedAlertDisplay[];
   loading?: boolean;
   error?: string;
+  hasLoadedOnceSuccessfully?: boolean;
   onOpenMergeRequest?: (url: string) => void | Promise<void>;
   onIgnoreAssignedUntilNewCommit?: (mergeRequestId: number) => void;
   tabNavigationRequest?: TabNavigationRequest;
@@ -66,6 +67,70 @@ function getAssigneeLabel(mergeRequest: MergeRequest): string {
   }
 
   return mergeRequest.assignee?.name ?? 'Unassigned';
+}
+
+function getReviewerLabel(mergeRequest: MergeRequest): string {
+  const reviewerNames = (mergeRequest.reviewers ?? [])
+    .map((reviewer) => reviewer.name ?? reviewer.username)
+    .filter((value): value is string => Boolean(value));
+
+  if (reviewerNames.length === 0) {
+    return '-';
+  }
+
+  return [...new Set(reviewerNames)].join(', ');
+}
+
+function getLabelNames(mergeRequest: MergeRequest): string[] {
+  return (mergeRequest.labels ?? [])
+    .map((label) => (typeof label === 'string' ? label : label.name))
+    .filter((value): value is string => Boolean(value));
+}
+
+function getCommentsLabel(mergeRequest: MergeRequest): string {
+  if (typeof mergeRequest.user_notes_count !== 'number') {
+    return '-';
+  }
+
+  return `${mergeRequest.user_notes_count}`;
+}
+
+function getDiffSummaryLabel(mergeRequest: MergeRequest): string {
+  const diffStats = mergeRequest.diffStats;
+  const changedFiles =
+    diffStats?.changedFiles ??
+    (() => {
+      if (!mergeRequest.changes_count) {
+        return undefined;
+      }
+
+      const parsed = Number.parseInt(mergeRequest.changes_count, 10);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    })();
+
+  if (changedFiles == null) {
+    return '-';
+  }
+
+  if (typeof diffStats?.additions === 'number' && typeof diffStats?.deletions === 'number') {
+    return `${changedFiles} files / +${diffStats.additions} -${diffStats.deletions}`;
+  }
+
+  return `${changedFiles} files`;
+}
+
+function renderSupplementaryMetadata(mergeRequest: MergeRequest) {
+  const labels = getLabelNames(mergeRequest);
+
+  return (
+    <div className="mt-3 grid gap-1.5 border-t border-slate-200 pt-3 text-xs text-slate-600">
+      <p>レビュア: {getReviewerLabel(mergeRequest)}</p>
+      <p>差分: {getDiffSummaryLabel(mergeRequest)}</p>
+      <p>コメント数: {getCommentsLabel(mergeRequest)}</p>
+      <p>ラベル: {labels.length > 0 ? labels.join(', ') : '-'}</p>
+      <p>マイルストーン: {mergeRequest.milestone?.title ?? '-'}</p>
+    </div>
+  );
 }
 
 function getCiStatusLabel(ciStatus: CiStatus): string {
@@ -358,6 +423,7 @@ function renderMergeRequestItem(
             {isIgnoredFailedCi && <Badge variant="secondary">CI failure ignored</Badge>}
             {!isAtRisk && <Badge variant="outline">Healthy</Badge>}
           </div>
+          {renderSupplementaryMetadata(mergeRequest)}
           {canIgnoreUntilNewCommit && (
             <div className="mt-3 border-t border-slate-200 pt-3">
               <button
@@ -417,6 +483,7 @@ export function MergeRequestList({
   ignoredAssignedAlerts,
   loading,
   error,
+  hasLoadedOnceSuccessfully,
   onOpenMergeRequest,
   onIgnoreAssignedUntilNewCommit,
   tabNavigationRequest,
@@ -476,6 +543,9 @@ export function MergeRequestList({
     }
     return 'No review-requested merge requests.';
   }, [reviewStatusFilter]);
+  const hasAnyItems = assignedItems.length > 0 || reviewRequestedItems.length > 0;
+  const shouldRenderFullLoadingState = loading && !hasLoadedOnceSuccessfully && !hasAnyItems;
+  const shouldRenderFullErrorState = !!error && !hasLoadedOnceSuccessfully && !hasAnyItems;
 
   const toggleReviewStatusFilter = (status: ReviewerReviewStatus) => {
     setReviewStatusFilter((current) => (current === status ? 'all' : status));
@@ -500,7 +570,7 @@ export function MergeRequestList({
     setActiveTab(tabNavigationRequest.tab);
   }, [tabNavigationRequest]);
 
-  if (loading) {
+  if (shouldRenderFullLoadingState) {
     return (
       <Card>
         <CardContent className="pt-5 text-sm text-slate-600">Loading merge requests...</CardContent>
@@ -508,7 +578,7 @@ export function MergeRequestList({
     );
   }
 
-  if (error) {
+  if (shouldRenderFullErrorState) {
     return (
       <Card className="border-red-200">
         <CardContent className="flex items-center gap-2 pt-5 text-sm text-red-700" role="alert">
@@ -531,125 +601,135 @@ export function MergeRequestList({
   }
 
   return (
-    <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabKey)}>
-      <TabsList className="grid w-full grid-cols-2 sm:w-[320px]">
-        <TabsTrigger value="assigned">Assigned ({assignedItems.length})</TabsTrigger>
-        <TabsTrigger value="review">Review requested ({reviewRequestedItems.length})</TabsTrigger>
-      </TabsList>
-      <TabsContent value="assigned">
-        <div className="space-y-3">
+    <div className="space-y-3">
+      {error && (
+        <Card className="border-red-200">
+          <CardContent className="flex items-center gap-2 pt-5 text-sm text-red-700" role="alert">
+            <AlertCircle className="size-4" />
+            {error}
+          </CardContent>
+        </Card>
+      )}
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as TabKey)}>
+        <TabsList className="grid w-full grid-cols-2 sm:w-[320px]">
+          <TabsTrigger value="assigned">Assigned ({assignedItems.length})</TabsTrigger>
+          <TabsTrigger value="review">Review requested ({reviewRequestedItems.length})</TabsTrigger>
+        </TabsList>
+        <TabsContent value="assigned">
+          <div className="space-y-3">
+            <Card>
+              <CardContent className="flex flex-wrap gap-2 pt-4 text-xs text-slate-600">
+                <button
+                  type="button"
+                  aria-pressed={assignedStatusFilter === 'conflicts'}
+                  className={cn(
+                    badgeVariants({ variant: 'warning' }),
+                    'cursor-pointer transition-opacity',
+                    assignedStatusFilter === 'conflicts'
+                      ? 'ring-2 ring-amber-300 ring-offset-1'
+                      : 'opacity-75 hover:opacity-100',
+                  )}
+                  onClick={() => toggleAssignedStatusFilter('conflicts')}
+                >
+                  競合 {assignedStatusCounts.conflicts}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={assignedStatusFilter === 'failed_ci'}
+                  className={cn(
+                    badgeVariants({ variant: 'destructive' }),
+                    'cursor-pointer transition-opacity',
+                    assignedStatusFilter === 'failed_ci'
+                      ? 'ring-2 ring-red-300 ring-offset-1'
+                      : 'opacity-75 hover:opacity-100',
+                  )}
+                  onClick={() => toggleAssignedStatusFilter('failed_ci')}
+                >
+                  CI失敗 {assignedStatusCounts.failedCi}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={assignedStatusFilter === 'pending_approvals'}
+                  className={cn(
+                    badgeVariants({ variant: 'secondary' }),
+                    'cursor-pointer transition-opacity',
+                    assignedStatusFilter === 'pending_approvals'
+                      ? 'ring-2 ring-slate-300 ring-offset-1'
+                      : 'opacity-75 hover:opacity-100',
+                  )}
+                  onClick={() => toggleAssignedStatusFilter('pending_approvals')}
+                >
+                  承認待ち {assignedStatusCounts.pendingApprovals}
+                </button>
+              </CardContent>
+            </Card>
+            {renderList(
+              filteredAssignedItems,
+              assignedListEmptyMessage,
+              'assigned',
+              ignoredAssignedAlertMap,
+              onOpenMergeRequest,
+              onIgnoreAssignedUntilNewCommit,
+            )}
+          </div>
+        </TabsContent>
+        <TabsContent value="review" className="space-y-3">
           <Card>
             <CardContent className="flex flex-wrap gap-2 pt-4 text-xs text-slate-600">
               <button
                 type="button"
-                aria-pressed={assignedStatusFilter === 'conflicts'}
-                className={cn(
-                  badgeVariants({ variant: 'warning' }),
-                  'cursor-pointer transition-opacity',
-                  assignedStatusFilter === 'conflicts'
-                    ? 'ring-2 ring-amber-300 ring-offset-1'
-                    : 'opacity-75 hover:opacity-100',
-                )}
-                onClick={() => toggleAssignedStatusFilter('conflicts')}
-              >
-                競合 {assignedStatusCounts.conflicts}
-              </button>
-              <button
-                type="button"
-                aria-pressed={assignedStatusFilter === 'failed_ci'}
+                aria-pressed={reviewStatusFilter === 'needs_review'}
                 className={cn(
                   badgeVariants({ variant: 'destructive' }),
                   'cursor-pointer transition-opacity',
-                  assignedStatusFilter === 'failed_ci'
+                  reviewStatusFilter === 'needs_review'
                     ? 'ring-2 ring-red-300 ring-offset-1'
                     : 'opacity-75 hover:opacity-100',
                 )}
-                onClick={() => toggleAssignedStatusFilter('failed_ci')}
+                onClick={() => toggleReviewStatusFilter('needs_review')}
               >
-                CI失敗 {assignedStatusCounts.failedCi}
+                要レビュー {reviewStatusCounts.needsReview}
               </button>
               <button
                 type="button"
-                aria-pressed={assignedStatusFilter === 'pending_approvals'}
+                aria-pressed={reviewStatusFilter === 'new'}
+                className={cn(
+                  badgeVariants({ variant: 'warning' }),
+                  'cursor-pointer transition-opacity',
+                  reviewStatusFilter === 'new'
+                    ? 'ring-2 ring-amber-300 ring-offset-1'
+                    : 'opacity-75 hover:opacity-100',
+                )}
+                onClick={() => toggleReviewStatusFilter('new')}
+              >
+                未着手 {reviewStatusCounts.new}
+              </button>
+              <button
+                type="button"
+                aria-pressed={reviewStatusFilter === 'waiting_for_author'}
                 className={cn(
                   badgeVariants({ variant: 'secondary' }),
                   'cursor-pointer transition-opacity',
-                  assignedStatusFilter === 'pending_approvals'
+                  reviewStatusFilter === 'waiting_for_author'
                     ? 'ring-2 ring-slate-300 ring-offset-1'
                     : 'opacity-75 hover:opacity-100',
                 )}
-                onClick={() => toggleAssignedStatusFilter('pending_approvals')}
+                onClick={() => toggleReviewStatusFilter('waiting_for_author')}
               >
-                承認待ち {assignedStatusCounts.pendingApprovals}
+                作者修正待ち {reviewStatusCounts.waitingForAuthor}
               </button>
             </CardContent>
           </Card>
           {renderList(
-            filteredAssignedItems,
-            assignedListEmptyMessage,
-            'assigned',
+            filteredReviewRequestedItems,
+            reviewListEmptyMessage,
+            'review',
             ignoredAssignedAlertMap,
             onOpenMergeRequest,
             onIgnoreAssignedUntilNewCommit,
           )}
-        </div>
-      </TabsContent>
-      <TabsContent value="review" className="space-y-3">
-        <Card>
-          <CardContent className="flex flex-wrap gap-2 pt-4 text-xs text-slate-600">
-            <button
-              type="button"
-              aria-pressed={reviewStatusFilter === 'needs_review'}
-              className={cn(
-                badgeVariants({ variant: 'destructive' }),
-                'cursor-pointer transition-opacity',
-                reviewStatusFilter === 'needs_review'
-                  ? 'ring-2 ring-red-300 ring-offset-1'
-                  : 'opacity-75 hover:opacity-100',
-              )}
-              onClick={() => toggleReviewStatusFilter('needs_review')}
-            >
-              要レビュー {reviewStatusCounts.needsReview}
-            </button>
-            <button
-              type="button"
-              aria-pressed={reviewStatusFilter === 'new'}
-              className={cn(
-                badgeVariants({ variant: 'warning' }),
-                'cursor-pointer transition-opacity',
-                reviewStatusFilter === 'new'
-                  ? 'ring-2 ring-amber-300 ring-offset-1'
-                  : 'opacity-75 hover:opacity-100',
-              )}
-              onClick={() => toggleReviewStatusFilter('new')}
-            >
-              未着手 {reviewStatusCounts.new}
-            </button>
-            <button
-              type="button"
-              aria-pressed={reviewStatusFilter === 'waiting_for_author'}
-              className={cn(
-                badgeVariants({ variant: 'secondary' }),
-                'cursor-pointer transition-opacity',
-                reviewStatusFilter === 'waiting_for_author'
-                  ? 'ring-2 ring-slate-300 ring-offset-1'
-                  : 'opacity-75 hover:opacity-100',
-              )}
-              onClick={() => toggleReviewStatusFilter('waiting_for_author')}
-            >
-              作者修正待ち {reviewStatusCounts.waitingForAuthor}
-            </button>
-          </CardContent>
-        </Card>
-        {renderList(
-          filteredReviewRequestedItems,
-          reviewListEmptyMessage,
-          'review',
-          ignoredAssignedAlertMap,
-          onOpenMergeRequest,
-          onIgnoreAssignedUntilNewCommit,
-        )}
-      </TabsContent>
-    </Tabs>
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }
