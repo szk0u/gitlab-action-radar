@@ -52,7 +52,7 @@
     "oxfmt": "^0.47.0",
     "oxlint": "^1.62.0",
     "storybook": "10.3.6",
-    "tailwindcss": "^4.2.4",
+    "tailwindcss": "^4.3.0",
     "typescript": "latest",
     "vite": "latest",
     "vitest": "latest"
