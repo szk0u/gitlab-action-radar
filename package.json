@@ -51,7 +51,7 @@
     "lefthook": "^2.1.6",
     "oxfmt": "^0.48.0",
     "oxlint": "^1.65.0",
-    "storybook": "10.3.6",
+    "storybook": "10.4.0",
     "tailwindcss": "^4.3.0",
     "typescript": "latest",
     "vite": "latest",
