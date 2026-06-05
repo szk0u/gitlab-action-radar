@@ -1,4 +1,5 @@
-import * as React from 'preact/compat';
+import type { ButtonHTMLAttributes } from 'preact';
+import { forwardRef } from 'preact/compat';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/utils';
 
@@ -29,9 +30,9 @@ const buttonVariants = cva(
 );
 
 export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
+  extends ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {}
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, ...props }, ref) => {
     const buttonClassName = cn(buttonVariants({ variant, size, className }));
 

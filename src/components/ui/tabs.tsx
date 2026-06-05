@@ -1,5 +1,12 @@
-import * as React from 'preact/compat';
-import { useId, useState } from 'preact/hooks';
+import {
+  createContext,
+  type ButtonHTMLAttributes,
+  type HTMLAttributes,
+  type TargetedKeyboardEvent,
+  type TargetedMouseEvent,
+} from 'preact';
+import { forwardRef } from 'preact/compat';
+import { useContext, useId, useState } from 'preact/hooks';
 import { cn } from '../../lib/utils';
 
 interface TabsContextValue {
@@ -8,10 +15,10 @@ interface TabsContextValue {
   setValue: (value: string) => void;
 }
 
-const TabsContext = React.createContext<TabsContextValue | undefined>(undefined);
+const TabsContext = createContext<TabsContextValue | undefined>(undefined);
 
 function useTabsContext(componentName: string): TabsContextValue {
-  const context = React.useContext(TabsContext);
+  const context = useContext(TabsContext);
   if (!context) {
     throw new Error(`${componentName} must be used within Tabs`);
   }
@@ -26,13 +33,13 @@ function getPanelId(baseId: string, value: string): string {
   return `${baseId}-panel-${value}`;
 }
 
-type TabsProps = Omit<React.HTMLAttributes<HTMLDivElement>, 'defaultValue' | 'onChange'> & {
+type TabsProps = Omit<HTMLAttributes<HTMLDivElement>, 'defaultValue' | 'onChange'> & {
   defaultValue?: string;
   value?: string;
   onValueChange?: (value: string) => void;
 };
 
-const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
+const Tabs = forwardRef<HTMLDivElement, TabsProps>(
   ({ className, defaultValue, value, onValueChange, ...props }, ref) => {
     const generatedId = useId();
     const [uncontrolledValue, setUncontrolledValue] = useState(defaultValue ?? '');
@@ -54,7 +61,7 @@ const Tabs = React.forwardRef<HTMLDivElement, TabsProps>(
 );
 Tabs.displayName = 'Tabs';
 
-const TabsList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+const TabsList = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   ({ className, ...props }, ref) => (
     <div
       role="tablist"
@@ -69,7 +76,7 @@ const TabsList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
 );
 TabsList.displayName = 'TabsList';
 
-type TabsTriggerProps = Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'value'> & {
+type TabsTriggerProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'value'> & {
   value: string;
 };
 
@@ -80,7 +87,7 @@ const tabKeyMap = {
   ArrowUp: -1,
 } as const;
 
-const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
+const TabsTrigger = forwardRef<HTMLButtonElement, TabsTriggerProps>(
   ({ className, value, disabled, onClick, onKeyDown, ...props }, ref) => {
     const context = useTabsContext('TabsTrigger');
     const isActive = context.value === value;
@@ -106,7 +113,7 @@ const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
       nextTab?.click();
     }
 
-    function handleKeyDown(event: React.KeyboardEvent<HTMLButtonElement>): void {
+    function handleKeyDown(event: TargetedKeyboardEvent<HTMLButtonElement>): void {
       onKeyDown?.(event);
       if (event.defaultPrevented) {
         return;
@@ -124,7 +131,7 @@ const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
       }
     }
 
-    function handleClick(event: React.MouseEvent<HTMLButtonElement>): void {
+    function handleClick(event: TargetedMouseEvent<HTMLButtonElement>): void {
       onClick?.(event);
       if (!event.defaultPrevented) {
         context.setValue(value);
@@ -155,11 +162,11 @@ const TabsTrigger = React.forwardRef<HTMLButtonElement, TabsTriggerProps>(
 );
 TabsTrigger.displayName = 'TabsTrigger';
 
-type TabsContentProps = Omit<React.HTMLAttributes<HTMLDivElement>, 'value'> & {
+type TabsContentProps = Omit<HTMLAttributes<HTMLDivElement>, 'value'> & {
   value: string;
 };
 
-const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(
+const TabsContent = forwardRef<HTMLDivElement, TabsContentProps>(
   ({ className, value, ...props }, ref) => {
     const context = useTabsContext('TabsContent');
     const isActive = context.value === value;
