@@ -1,4 +1,4 @@
-import * as React from 'react';
+import * as React from 'preact/compat';
 import { cn } from '../../lib/utils';
 
 const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(

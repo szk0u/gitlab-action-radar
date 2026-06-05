@@ -1,5 +1,5 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
-import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import type { Meta, StoryObj } from '@storybook/preact-vite';
+import { AlertCircle, CheckCircle2 } from 'lucide-preact';
 import { Badge } from './badge';
 
 const meta = {

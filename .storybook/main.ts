@@ -1,10 +1,10 @@
-import type { StorybookConfig } from '@storybook/react-vite';
+import type { StorybookConfig } from '@storybook/preact-vite';
 
 const config = {
   stories: ['../src/**/*.stories.@(ts|tsx)'],
   addons: ['@storybook/addon-docs', '@storybook/addon-a11y'],
   framework: {
-    name: '@storybook/react-vite',
+    name: '@storybook/preact-vite',
     options: {},
   },
   docs: {

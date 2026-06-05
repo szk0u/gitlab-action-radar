@@ -1,6 +1,6 @@
 # GitLab Action Radar
 
-Tauri + React + TypeScript で作るメニューバー常駐型の GitLab MR レーダーです。
+Tauri + Preact + TypeScript で作るメニューバー常駐型の GitLab MR レーダーです。
 
 ## セットアップ (pnpm)
 

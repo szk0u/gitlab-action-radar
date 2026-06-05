@@ -4,7 +4,7 @@
 
 ## プロジェクト概要
 
-- Tauri + React + TypeScript で構成された、メニューバー常駐型 GitLab MR レーダー。
+- Tauri + Preact + TypeScript で構成された、メニューバー常駐型 GitLab MR レーダー。
 - フロントエンドは Vite、テストは Vitest。
 
 ## 基本コマンド
@@ -26,7 +26,7 @@
 
 ## 主要ディレクトリ
 
-- `src/`: フロントエンド（React/TypeScript）
+- `src/`: フロントエンド（Preact/TypeScript）
 - `src-tauri/`: Tauri（Rust）側
 - `__tests__/`: テスト
 - `docs/`: 補足ドキュメント（例: `architecture.md`）

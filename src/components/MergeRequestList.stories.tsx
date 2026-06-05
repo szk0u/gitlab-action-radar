@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from '@storybook/react-vite';
+import type { Meta, StoryObj } from '@storybook/preact-vite';
 import { fn } from 'storybook/test';
 import { MergeRequestList } from './MergeRequestList';
 import type { MergeRequestHealth } from '../types/gitlab';
