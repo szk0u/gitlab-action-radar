@@ -19,3 +19,5 @@ src-tauri/gen/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+tmp
