@@ -1,0 +1,30 @@
+amends "package://github.com/jdx/hk/releases/download/v1.46.0/hk@1.46.0#/Config.pkl"
+
+local stagedLinters = new Mapping<String, Step> {
+  ["format"] {
+    glob = List("*.js", "*.jsx", "*.ts", "*.tsx", "*.json", "*.md", "*.yml", "*.yaml")
+    fix = "aube exec oxfmt -- {{files}}"
+  }
+  ["lint"] {
+    glob = List("*.js", "*.jsx", "*.ts", "*.tsx")
+    check = "aube exec oxlint -- --deny-warnings {{files}}"
+  }
+}
+
+hooks {
+  ["pre-commit"] {
+    fix = true
+    stash = "git"
+    steps = stagedLinters
+  }
+  ["pre-push"] {
+    steps {
+      ["test"] {
+        check = "aube run test"
+      }
+      ["build"] {
+        check = "aube run build"
+      }
+    }
+  }
+}

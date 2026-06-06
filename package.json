@@ -12,7 +12,7 @@
     "lint": "bunx oxlint . --deny-warnings",
     "lint:fix": "bunx oxlint . --fix --deny-warnings",
     "preview": "bunx vite preview",
-    "prepare": "lefthook install",
+    "prepare": "mise exec -- hk install --mise",
     "storybook": "bunx storybook dev -p 6006",
     "build-storybook": "bunx storybook build",
     "tauri": "bunx tauri",
@@ -43,7 +43,6 @@
     "@types/node": "latest",
     "http-server": "^14.1.1",
     "jsdom": "^28.1.0",
-    "lefthook": "^2.1.8",
     "oxfmt": "^0.52.0",
     "oxlint": "^1.67.0",
     "storybook": "10.4.1",
@@ -55,8 +54,7 @@
   "packageManager": "aube@1.17.1",
   "aube": {
     "allowBuilds": {
-      "esbuild": true,
-      "lefthook": true
+      "esbuild": true
     }
   }
 }
