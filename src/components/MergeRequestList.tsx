@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, FolderGit2, GitPullRequest } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'preact/hooks';
+import { AlertCircle, CheckCircle2, FolderGit2, GitPullRequest } from 'lucide-preact';
 import { CiStatus, MergeRequest, MergeRequestHealth, ReviewerReviewStatus } from '../types/gitlab';
 import { cn } from '../lib/utils';
 import { Badge, badgeVariants } from './ui/badge';

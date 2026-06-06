@@ -4,51 +4,45 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "check": "pnpm fmt:check && pnpm lint && pnpm test && pnpm build",
-    "fmt": "oxfmt .",
-    "fmt:check": "oxfmt --check .",
-    "lint": "oxlint . --deny-warnings",
-    "lint:fix": "oxlint . --fix --deny-warnings",
-    "preview": "vite preview",
-    "prepare": "lefthook install",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build",
-    "tauri": "tauri",
-    "test": "vitest run",
-    "test:visual": "pnpm build-storybook && playwright test",
-    "test:visual:update": "pnpm build-storybook && playwright test --update-snapshots",
-    "test:watch": "vitest"
+    "dev": "bunx vite",
+    "build": "bunx tsc && bunx vite build",
+    "check": "aube run fmt:check && aube run lint && aube run test && aube run build",
+    "fmt": "bunx oxfmt .",
+    "fmt:check": "bunx oxfmt --check .",
+    "lint": "bunx oxlint . --deny-warnings",
+    "lint:fix": "bunx oxlint . --fix --deny-warnings",
+    "preview": "bunx vite preview",
+    "prepare": "mise exec -- hk install --mise",
+    "storybook": "bunx storybook dev -p 6006",
+    "build-storybook": "bunx storybook build",
+    "tauri": "bunx tauri",
+    "test": "bunx vitest run",
+    "test:visual": "aube run build-storybook && bunx playwright test",
+    "test:visual:update": "aube run build-storybook && bunx playwright test --update-snapshots",
+    "test:watch": "bunx vitest"
   },
   "dependencies": {
     "@fontsource/instrument-sans": "^5.2.8",
-    "@radix-ui/react-slot": "^1.2.4",
-    "@radix-ui/react-tabs": "^1.1.13",
     "@tauri-apps/api": "latest",
     "@tauri-apps/plugin-notification": "^2.3.3",
     "@tauri-apps/plugin-store": "^2.4.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^1.17.0",
-    "react": "latest",
-    "react-dom": "latest",
+    "lucide-preact": "^1.8.0",
+    "preact": "latest",
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@preact/preset-vite": "latest",
     "@storybook/addon-a11y": "10.4.1",
     "@storybook/addon-docs": "10.4.1",
-    "@storybook/react-vite": "10.4.1",
+    "@storybook/preact-vite": "10.4.1",
     "@tailwindcss/vite": "^4.3.0",
     "@tauri-apps/cli": "latest",
     "@types/node": "latest",
-    "@types/react": "latest",
-    "@types/react-dom": "latest",
-    "@vitejs/plugin-react": "latest",
     "http-server": "^14.1.1",
     "jsdom": "^28.1.0",
-    "lefthook": "^2.1.8",
     "oxfmt": "^0.52.0",
     "oxlint": "^1.67.0",
     "storybook": "10.4.1",
@@ -57,5 +51,10 @@
     "vite": "latest",
     "vitest": "latest"
   },
-  "packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937"
+  "packageManager": "aube@1.17.1",
+  "aube": {
+    "allowBuilds": {
+      "esbuild": true
+    }
+  }
 }

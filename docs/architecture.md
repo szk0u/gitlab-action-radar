@@ -2,7 +2,7 @@
 
 ## 1. ゴール
 
-- Tauri + React + TypeScript でデスクトップ常駐アプリを構築する。
+- Tauri + Preact + TypeScript でデスクトップ常駐アプリを構築する。
 - GitLab API から MR 情報を取得し、以下のシグナルを可視化する。
   - CI failure
   - Conflicts
@@ -15,7 +15,7 @@
 - **Shell (Rust/Tauri)**
   - システムトレイ生成・クリックイベント・終了メニュー。
   - ウィンドウ表示/非表示制御（常駐UI）。
-- **UI (React + Vite + TypeScript)**
+- **UI (Preact + Vite + TypeScript)**
   - MR一覧表示。
   - シグナルバッジ表示。
   - ローディング/エラー表示。

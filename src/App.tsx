@@ -7,8 +7,8 @@ import {
   onAction,
 } from '@tauri-apps/plugin-notification';
 import { Store } from '@tauri-apps/plugin-store';
-import { RefreshCw } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { RefreshCw } from 'lucide-preact';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { GitLabApiError, GitLabClient } from './api/gitlabClient';
 import { MergeRequestList, type TabKey } from './components/MergeRequestList';
 import { Button } from './components/ui/button';
@@ -1865,7 +1865,7 @@ export function App() {
                     <Input
                       type="password"
                       value={patInput}
-                      onChange={(event) => setPatInput(event.target.value)}
+                      onChange={(event) => setPatInput(event.currentTarget.value)}
                       placeholder="glpat-..."
                       aria-label="GitLab Personal Access Token (PAT)"
                       className="sm:flex-1"
@@ -1906,7 +1906,7 @@ export function App() {
                       <input
                         type="checkbox"
                         checked={autoPollingEnabled}
-                        onChange={(event) => setAutoPollingEnabled(event.target.checked)}
+                        onChange={(event) => setAutoPollingEnabled(event.currentTarget.checked)}
                         className="size-4"
                       />
                       Enable periodic refresh
@@ -1920,7 +1920,7 @@ export function App() {
                         value={autoPollingIntervalMinutes}
                         onChange={(event) =>
                           setAutoPollingIntervalMinutes(
-                            normalizePollingIntervalMinutes(Number(event.target.value)),
+                            normalizePollingIntervalMinutes(Number(event.currentTarget.value)),
                           )
                         }
                         disabled={!autoPollingEnabled}
@@ -1944,7 +1944,7 @@ export function App() {
                       <input
                         type="checkbox"
                         checked={showInCommandTab}
-                        onChange={(event) => setShowInCommandTab(event.target.checked)}
+                        onChange={(event) => setShowInCommandTab(event.currentTarget.checked)}
                         className="size-4"
                       />
                       Show this app in Command + Tab
@@ -1994,7 +1994,7 @@ export function App() {
                       <input
                         type="checkbox"
                         checked={reviewReminderEnabled}
-                        onChange={(event) => setReviewReminderEnabled(event.target.checked)}
+                        onChange={(event) => setReviewReminderEnabled(event.currentTarget.checked)}
                         className="size-4"
                       />
                       Enable reminder
@@ -2003,7 +2003,7 @@ export function App() {
                       <Input
                         type="time"
                         value={reviewReminderTimeInput}
-                        onChange={(event) => setReviewReminderTimeInput(event.target.value)}
+                        onChange={(event) => setReviewReminderTimeInput(event.currentTarget.value)}
                         step={60}
                         disabled={!reviewReminderEnabled}
                         className="sm:w-[160px]"

@@ -1,18 +1,19 @@
 # GitLab Action Radar
 
-Tauri + React + TypeScript で作るメニューバー常駐型の GitLab MR レーダーです。
+Tauri + Preact + TypeScript で作るメニューバー常駐型の GitLab MR レーダーです。
 
-## セットアップ (pnpm)
+## セットアップ (Aube + Bun runtime)
 
 ```bash
-pnpm install
-pnpm dev
+mise install
+aube install
+aube run dev
 ```
 
 Tauri 起動:
 
 ```bash
-pnpm tauri dev
+aube run tauri dev
 ```
 
 ## ビルド
@@ -20,16 +21,16 @@ pnpm tauri dev
 フロントエンド（`dist`）をビルド:
 
 ```bash
-pnpm build
+aube run build
 ```
 
 配布用の Tauri アプリをビルド:
 
 ```bash
-pnpm tauri build
+aube run tauri build
 ```
 
-`pnpm tauri build` 実行時は `beforeBuildCommand` により `pnpm build` も自動実行されます。  
+`aube run tauri build` 実行時は `beforeBuildCommand` により `aube run build` も自動実行されます。  
 成果物は `src-tauri/target/release/bundle` 配下に生成されます。
 
 ## GitHub Actions リリース
@@ -45,14 +46,14 @@ pnpm tauri build
 ## テスト (Vitest)
 
 ```bash
-pnpm test
+aube run test
 ```
 
 ## Storybook
 
 ```bash
-pnpm storybook
-pnpm build-storybook
+aube run storybook
+aube run build-storybook
 ```
 
 ## 収集対象MR

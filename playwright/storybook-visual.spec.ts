@@ -17,7 +17,7 @@ const indexPath = path.join(process.cwd(), 'storybook-static', 'index.json');
 function loadStoryIds(): string[] {
   if (!fs.existsSync(indexPath)) {
     throw new Error(
-      'storybook-static/index.json が見つかりません。先に `pnpm build-storybook` を実行してください。',
+      'storybook-static/index.json が見つかりません。先に `aube run build-storybook` を実行してください。',
     );
   }
   const raw = fs.readFileSync(indexPath, 'utf8');
