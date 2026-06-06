@@ -2,17 +2,18 @@
 
 Tauri + Preact + TypeScript で作るメニューバー常駐型の GitLab MR レーダーです。
 
-## セットアップ (pnpm)
+## セットアップ (Bun)
 
 ```bash
-pnpm install
-pnpm dev
+mise install
+bun install
+bun run dev
 ```
 
 Tauri 起動:
 
 ```bash
-pnpm tauri dev
+bun run tauri dev
 ```
 
 ## ビルド
@@ -20,16 +21,16 @@ pnpm tauri dev
 フロントエンド（`dist`）をビルド:
 
 ```bash
-pnpm build
+bun run build
 ```
 
 配布用の Tauri アプリをビルド:
 
 ```bash
-pnpm tauri build
+bun run tauri build
 ```
 
-`pnpm tauri build` 実行時は `beforeBuildCommand` により `pnpm build` も自動実行されます。  
+`bun run tauri build` 実行時は `beforeBuildCommand` により `bun run build` も自動実行されます。  
 成果物は `src-tauri/target/release/bundle` 配下に生成されます。
 
 ## GitHub Actions リリース
@@ -45,14 +46,14 @@ pnpm tauri build
 ## テスト (Vitest)
 
 ```bash
-pnpm test
+bun run test
 ```
 
 ## Storybook
 
 ```bash
-pnpm storybook
-pnpm build-storybook
+bun run storybook
+bun run build-storybook
 ```
 
 ## 収集対象MR

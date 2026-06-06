@@ -14,35 +14,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v5
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - name: Setup mise
+        uses: jdx/mise-action@v3
         with:
-          node-version: lts/*
-          cache: pnpm
+          install_args: bun
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: bun install --frozen-lockfile
 
       - name: Check formatting
-        run: pnpm fmt:check
+        run: bun run fmt:check
 
       - name: Lint
-        run: pnpm lint
+        run: bun run lint
 
       - name: Test
-        run: pnpm test
+        run: bun run test
 
       - name: Build
-        run: pnpm build
+        run: bun run build
 
       - name: Build Storybook
-        run: pnpm build-storybook
+        run: bun run build-storybook
 
       - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        run: bunx playwright install --with-deps chromium
 
       - name: Storybook visual regression
-        run: pnpm exec playwright test
+        run: bunx playwright test
