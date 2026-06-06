@@ -4,22 +4,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "check": "bun run fmt:check && bun run lint && bun run test && bun run build",
-    "fmt": "oxfmt .",
-    "fmt:check": "oxfmt --check .",
-    "lint": "oxlint . --deny-warnings",
-    "lint:fix": "oxlint . --fix --deny-warnings",
-    "preview": "vite preview",
+    "dev": "bunx vite",
+    "build": "bunx tsc && bunx vite build",
+    "check": "aube run fmt:check && aube run lint && aube run test && aube run build",
+    "fmt": "bunx oxfmt .",
+    "fmt:check": "bunx oxfmt --check .",
+    "lint": "bunx oxlint . --deny-warnings",
+    "lint:fix": "bunx oxlint . --fix --deny-warnings",
+    "preview": "bunx vite preview",
     "prepare": "lefthook install",
-    "storybook": "storybook dev -p 6006",
-    "build-storybook": "storybook build",
-    "tauri": "tauri",
-    "test": "vitest run",
-    "test:visual": "bun run build-storybook && playwright test",
-    "test:visual:update": "bun run build-storybook && playwright test --update-snapshots",
-    "test:watch": "vitest"
+    "storybook": "bunx storybook dev -p 6006",
+    "build-storybook": "bunx storybook build",
+    "tauri": "bunx tauri",
+    "test": "bunx vitest run",
+    "test:visual": "aube run build-storybook && bunx playwright test",
+    "test:visual:update": "aube run build-storybook && bunx playwright test --update-snapshots",
+    "test:watch": "bunx vitest"
   },
   "dependencies": {
     "@fontsource/instrument-sans": "^5.2.8",
@@ -52,5 +52,11 @@
     "vite": "latest",
     "vitest": "latest"
   },
-  "packageManager": "bun@1.3.14"
+  "packageManager": "aube@1.17.1",
+  "aube": {
+    "allowBuilds": {
+      "esbuild": true,
+      "lefthook": true
+    }
+  }
 }

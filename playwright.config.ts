@@ -27,7 +27,7 @@ export default defineConfig({
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
-    command: `bunx http-server storybook-static -p ${storybookPort} -c-1 --silent`,
+    command: `aube exec http-server -- storybook-static -p ${storybookPort} -c-1 --silent`,
     url: storybookOrigin,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

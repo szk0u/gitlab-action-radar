@@ -17,28 +17,28 @@ jobs:
       - name: Setup mise
         uses: jdx/mise-action@v3
         with:
-          install_args: bun
+          install_args: aube bun
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: aube ci --ignore-scripts
 
       - name: Check formatting
-        run: bun run fmt:check
+        run: aube run fmt:check
 
       - name: Lint
-        run: bun run lint
+        run: aube run lint
 
       - name: Test
-        run: bun run test
+        run: aube run test
 
       - name: Build
-        run: bun run build
+        run: aube run build
 
       - name: Build Storybook
-        run: bun run build-storybook
+        run: aube run build-storybook
 
       - name: Install Playwright Chromium
-        run: bunx playwright install --with-deps chromium
+        run: aube exec playwright -- install --with-deps chromium
 
       - name: Storybook visual regression
-        run: bunx playwright test
+        run: aube exec playwright -- test

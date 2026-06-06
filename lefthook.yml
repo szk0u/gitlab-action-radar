@@ -3,15 +3,15 @@ pre-commit:
   commands:
     format:
       glob: '*.{js,jsx,ts,tsx,json,md,yml,yaml}'
-      run: mise exec -- bunx oxfmt {staged_files}
+      run: mise exec -- aube exec oxfmt -- {staged_files}
       stage_fixed: true
     lint:
       glob: '*.{js,jsx,ts,tsx}'
-      run: mise exec -- bunx oxlint --deny-warnings {staged_files}
+      run: mise exec -- aube exec oxlint -- --deny-warnings {staged_files}
 
 pre-push:
   commands:
     test:
-      run: mise exec -- bun run test
+      run: mise exec -- aube run test
     build:
-      run: mise exec -- bun run build
+      run: mise exec -- aube run build

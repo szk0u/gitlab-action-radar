@@ -9,13 +9,13 @@
 
 ## 基本コマンド
 
-- Bun セットアップ: `mise install`
-- 依存関係インストール: `bun install`
-- フロントエンド開発: `bun run dev`
-- Tauri 開発起動: `bun run tauri dev`
-- フロントエンドビルド: `bun run build`
-- Tauri 配布ビルド: `bun run tauri build`
-- テスト: `bun run test`
+- ツールセットアップ: `mise install`
+- 依存関係インストール（package manager は Aube）: `aube install`
+- フロントエンド開発: `aube run dev`
+- Tauri 開発起動: `aube run tauri dev`
+- フロントエンドビルド: `aube run build`
+- Tauri 配布ビルド: `aube run tauri build`
+- テスト: `aube run test`
 
 ## 環境変数
 
@@ -34,6 +34,6 @@
 
 ## 作業ルール
 
-- 変更前後で最低限 `bun run test` を実行し、必要に応じて `bun run build` も確認する。
+- 変更前後で最低限 `aube run test` を実行し、必要に応じて `aube run build` も確認する。
 - 既存の設定・機能説明は `README.md` を正とする。
 - 大きな仕様判断が必要な場合は、先にユーザーへ確認する。
