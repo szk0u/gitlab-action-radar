@@ -43,7 +43,7 @@
     "@types/node": "latest",
     "http-server": "^14.1.1",
     "jsdom": "^28.1.0",
-    "oxfmt": "^0.53.0",
+    "oxfmt": "^0.54.0",
     "oxlint": "^1.67.0",
     "storybook": "10.4.4",
     "tailwindcss": "^4.3.0",
